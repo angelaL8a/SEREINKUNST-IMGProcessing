@@ -1,10 +1,9 @@
-![Serein Kunst Cover](/assets/UI-Figma/cover.png)
+
+![Serein Kunst Logo](/assets/landing/LOGO.png)
 
 # 🌸 **Serein Kunst** 🌸
 
-
-
-![Serein Kunst Logo](/assets/landing/LOGO.png)
+![Serein Kunst Cover](/assets/UI-Figma/cover.png)
 ***Revolutionizing Image Processing with Art and Precision***
 
 ## 🖼️ **Overview**
