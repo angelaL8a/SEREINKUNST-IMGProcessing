@@ -87,8 +87,8 @@ The architecture of **Serein Kunst** is highly modular and reusable:
 - **Scalability & Flexibility**: Built with modular JavaScript components, the app can easily be extended with new filters and effects, making it future-proof.
 - **High-Performance Processing**: The app integrates **WebGL** shaders for efficient image transformations and visual effects.
 
-## 📸 **Screenshots**
-
+## 📸 **Screenshots**  
+*The prototype images displayed in the design of the application are illustrative references used for showcasing the filter processes. These prototypes do not feature aesthetic images but instead utilize real-time webcam feeds for filter application and face recognition.*  
 ![Filter Showcase](/assets/UI-Figma/Frame1.png)
 ![Filter Showcase](/assets/UI-Figma/Frame2.png)
 ![Filter Showcase](/assets/UI-Figma/Frame3.png)
