@@ -2,9 +2,10 @@
 
 # 🌸 **Serein Kunst** 🌸
 
-**Revolutionizing Image Processing with Art and Precision**
+
 
 ![Serein Kunst Logo](/assets/landing/LOGO.png)
+***Revolutionizing Image Processing with Art and Precision***
 
 ## 🖼️ **Overview**
 
