@@ -1,0 +1,3678 @@
+
+ -------------------- circular-slider.js ------------------------ 
+
+/**
+ * circular-slider.js
+ *
+ * This script defines and manages circular sliders that allow users to adjust
+ * threshold values for image processing filters. Each circular slider is associated
+ *  with a specific color channel (red, green, or blue) and allows users to
+ * interactively modify the threshold values. The sliders visually represent the user's
+ * input by rotating a knob along a circular track.
+ *
+ * The main functionalities include:
+ * - Dynamically creating and appending circular sliders to the DOM.
+ * - Handling user interactions to rotate the slider knob.
+ * - Converting the knob's rotation angle into a threshold value.
+ * - Updating associated image processing parameters in real time based on user input.
+ */
+
+/**
+ * CircularSlider class
+ *
+ * This class encapsulates the functionality of a circular slider, including its
+ * initialization, user interaction handling, and conversion of knob rotation into
+ * a percentage value.
+ */
+class CircularSlider {
+  /**
+   * Constructor to initialize the CircularSlider instance.
+   *
+   * @param {string} knobSelector - CSS selector for the slider knob element.
+   * @param {string} pointerSelector - CSS selector for the pointer inside the knob.
+   * @param {string} progressSelector - ID of the SVG circle element representing the progress indicator.
+   * @param {number} [defaultValue=128] - Default threshold value for the slider (0-255 range).
+   */
+  constructor(
+    knobSelector,
+    pointerSelector,
+    progressSelector,
+    defaultValue = 128
+  ) {
+    this.knob = document.querySelector(knobSelector);
+    this.pointer = document.querySelector(pointerSelector);
+    this.progressCircle = document.getElementById(progressSelector);
+    this.isRotating = false;
+    this.progressPercent = 0;
+    // Calculate the initial rotation based on the default value and update the slider
+    const initialRotation = (defaultValue / 255) * 270;
+    this._updateRotation(initialRotation);
+    // Initialize event listeners for user interaction
+    this._initEventListeners(knobSelector);
+  }
+
+  /**
+   * Initializes event listeners for mouse events on the slider knob.
+   *
+   * @param {string} knob - CSS selector for the slider knob element.
+   */
+  _initEventListeners(knob) {
+    document.addEventListener("mousedown", (e) => {
+      if (e.target.closest(knob)) {
+        this.isRotating = true;
+      }
+    });
+
+    document.addEventListener("mousemove", (e) => this._rotateKnob(e));
+    document.addEventListener("mouseup", () => (this.isRotating = false));
+  }
+
+  /**
+   * Handles the rotation of the knob based on the user's mouse movement.
+   *
+   * @param {MouseEvent} e - The mouse event triggered by user interaction.
+   */
+  _rotateKnob(e) {
+    if (this.isRotating) {
+      const knobCenter = this._getKnobCenter();
+      const angleDeg = this._calculateRotationAngle(
+        e.clientX,
+        e.clientY,
+        knobCenter
+      );
+
+      const rotationAngle = (angleDeg - 135 + 360) % 360;
+      if (rotationAngle <= 270) {
+        this._updateRotation(rotationAngle);
+      }
+    }
+  }
+
+  /**
+   * Calculates the center coordinates of the knob element.
+   *
+   * @returns {Object} - An object containing the x and y coordinates of the knob center.
+   */
+  _getKnobCenter() {
+    const rect = this.knob.getBoundingClientRect();
+    return {
+      x: rect.left + this.knob.clientWidth / 2,
+      y: rect.top + this.knob.clientHeight / 2,
+    };
+  }
+
+  /**
+   * Calculates the angle of rotation based on the mouse position relative to the knob center.
+   *
+   * @param {number} clientX - The x-coordinate of the mouse pointer.
+   * @param {number} clientY - The y-coordinate of the mouse pointer.
+   * @param {Object} knobCenter - The center coordinates of the knob.
+   * @returns {number} - The angle of rotation in degrees.
+   */
+  _calculateRotationAngle(clientX, clientY, knobCenter) {
+    const deltaX = clientX - knobCenter.x;
+    const deltaY = clientY - knobCenter.y;
+    const angleRad = Math.atan2(deltaY, deltaX);
+    return (angleRad * 180) / Math.PI;
+  }
+
+  /**
+   * Updates the rotation of the knob and the corresponding progress indicator.
+   *
+   * @param {number} rotationAngle - The angle of rotation in degrees.
+   */
+  _updateRotation(rotationAngle) {
+    this.progressPercent = rotationAngle / 270;
+    this.pointer.style.transform = `rotate(${rotationAngle - 45}deg)`;
+    this.progressCircle.style.strokeDashoffset = `${
+      880 - 660 * this.progressPercent
+    }`;
+  }
+
+  /**
+   * Sets the value of the slider based on the provided default value.
+   * The default value should be in the range of 0-255.
+   * The knob rotation is updated accordingly.
+   * @param {number} defaultValue - The default threshold value for the slider.
+   * */
+  setValue(defaultValue) {
+    const initialRotation = (defaultValue / 255) * 270;
+    this._updateRotation(initialRotation);
+  }
+
+  /**
+   * Retrieves the current value of the slider as an integer (0-255 range).
+   *
+   * @returns {number} - The current slider value.
+   */
+  getValue() {
+    return Math.round(this.progressPercent * 255);
+  }
+}
+
+/**
+ * @class CircularSliderManager
+ * @description Manages the creation and behavior of circular sliders for different
+ * color channels. This class renders the sliders dynamically, initializes their
+ * configurations, and handles the events triggered when a user interacts with the
+ * sliders. Each slider controls the threshold for a specific color channel
+ * (red, green, blue).
+ */
+class CircularSliderManager {
+  /**
+   * @constructor
+   * @param {Object} sliderConfig - Configuration object that defines selectors,
+   * initial values, and other properties for each slider.
+   * @param {Array} colors - An array of color names (e.g., ['red', 'green', 'blue'])
+   * that represent the different channels.
+   * @param {HTMLElement} container - The DOM element where the sliders will be rendered.
+   */
+  constructor(sliderConfig, colors, container) {
+    // Render sliders into the provided container based on the specified colors.
+    this.renderSliders(container, colors);
+    this.sliders = {};
+
+    // Initialize each slider using the provided configuration.
+    Object.keys(sliderConfig).forEach((space) => {
+      const { knobSelector, pointerSelector, progressSelector, initialValue } =
+        sliderConfig[space].slider;
+
+      // Create a new CircularSlider instance for each color space.
+      this.sliders[space] = new CircularSlider(
+        knobSelector,
+        pointerSelector,
+        progressSelector,
+        initialValue
+      );
+    });
+  }
+
+  /**
+   * @method renderSliders
+   * @description Clears the container and renders the circular sliders for each color
+   * This function dynamically injects HTML for each circular slider into the DOM.
+   * @param {HTMLElement} container - The DOM element, sliders will be appended here.
+   * @param {Array} _colors - An array of colors (different channels)
+   */
+  renderSliders(container, _colors) {
+    if (!container) return;
+    container.innerHTML = ""; // Clear the container before rendering.
+    const colors = _colors;
+    colors.forEach((color) => {
+      container.innerHTML += this.createCircularSlider(color);
+    });
+  }
+
+  /**
+   * @method createCircularSlider
+   * @description Generates the HTML structure for a single circular slider, which
+   * includes a knob, pointer, and progress bar. Each slider is color-coded based
+   * on the channel (red, green, blue) it controls.
+   * @param {string} color - The color representing the channel for this slider
+   * @returns {string} HTML string representing the circular slider structure.
+   */
+  createCircularSlider(color) {
+    return `
+        <div class="threshold-oval">
+            <div class="circular-slider-container-${color}">
+                <div class="circular-slider-${color}">
+                    <div class="circular-knob-${color}">
+                        <div class="circular-pointer-${color}">
+                            <span class="material-icons">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M8 19V5L19 12L8 19Z" fill="#9B9B9B" />
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="threshold-oval-filter-container" id="threshold-oval-${color}"></div>
+                    </div>
+                    <svg class="circular-progress-bar-${color}" width="300" height="300">
+                        <circle class="circular-progress-background-${color}" cx="150" cy="150" r="140"></circle>
+                        <circle id="circular-progress-${color}" class="circular-progress-indicator-${color}" cx="150" cy="150" r="140" style="stroke: url(#gradient); stroke-width: 16px; stroke-linecap: round;"></circle>
+                        <defs>
+                            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color: #c2fde8" />
+                                <stop offset="50%" style="stop-color: #dfc4f5" />
+                                <stop offset="100%" style="stop-color: #e8d2f8" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+            </div>
+        </div>`;
+  }
+
+  /**
+   * @method registerEvents
+   * @description Registers mouse move events for each slider, allowing real-time
+   * updates to the image processing as the user interacts with the circular sliders.
+   * The event fires whenever the knob is moved, and it calls a callback with the
+   * updated space, value, and channel index.
+   * @param {function} callback - A callback function that receives the slider space
+   *  (e.g., 'RED_THRESHOLD'), the updated slider value, and the color channel index
+   *  (0 for red, 1 for green, 2 for blue).
+   */
+  registerEvents(callback) {
+    Object.keys(this.sliders).forEach((space) => {
+      const slider = this.sliders[space];
+      const channel = this.getChannel(space);
+      // Add event listener for mouse move,updates the slider's value when rotating.
+      document.addEventListener("mousemove", (e) => {
+        if (slider.isRotating) {
+          callback(space, slider.getValue(), channel);
+        }
+      });
+    });
+  }
+
+  /**
+   * @method getChannel
+   * @description Maps the slider space name (e.g., 'RED_THRESHOLD') to its corresponding color channel index.
+   * @param {string} space - The space or slider name
+   * @returns {number} The index of the color channel
+   */
+  getChannel(space) {
+    if (space === "RED_THRESHOLD") return 0;
+    if (space === "GREEN_THRESHOLD") return 1;
+    if (space === "BLUE_THRESHOLD") return 2;
+  }
+
+  /**
+   * @method getSlider
+   * @description Retrieves a specific CircularSlider instance by its space name.
+   * @param {string} space - The space or slider name
+   * (e.g., 'RED_THRESHOLD', 'GREEN_THRESHOLD', 'BLUE_THRESHOLD').
+   * @returns {CircularSlider} The CircularSlider instance associated with the provided space name.
+   */
+  getSlider(space) {
+    return this.sliders[space];
+  }
+}
+
+ -------------------- colorConverter.js ------------------------ 
+
+class ColorConverter {
+  /**
+   * Method to convert RGB values to HSV.
+   *
+   * This method uses the standard formula to convert RGB values to HSV values.
+   * The RGB values are first normalized to the range [0, 1], and then the HSV
+   * values are calculated and scaled back to the range [0, 255].
+   *
+   * @param {number} r - Red value (0-255).
+   * @param {number} g - Green value (0-255).
+   * @param {number} b - Blue value (0-255).
+   * @returns {number[]} Array containing HSV values [hue, saturation, value].
+   */
+  rgbToHSV(r, g, b) {
+    (r /= 255), (g /= 255), (b /= 255);
+    let max = Math.max(r, g, b),
+      min = Math.min(r, g, b);
+    let h,
+      s,
+      v = max;
+
+    let d = max - min;
+    s = max == 0 ? 0 : d / max;
+
+    if (max == min) {
+      h = 0; // achromatic
+    } else {
+      switch (max) {
+        case r:
+          h = (g - b) / d + (g < b ? 6 : 0);
+          break;
+        case g:
+          h = (b - r) / d + 2;
+          break;
+        case b:
+          h = (r - g) / d + 4;
+          break;
+      }
+      h /= 6;
+    }
+    return [h * 255, s * 255, v * 255];
+  }
+
+  hsvToRgb(h, s, v) {
+    let r, g, b;
+
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+
+    switch (i % 6) {
+      case 0:
+        (r = v), (g = t), (b = p);
+        break;
+      case 1:
+        (r = q), (g = v), (b = p);
+        break;
+      case 2:
+        (r = p), (g = v), (b = t);
+        break;
+      case 3:
+        (r = p), (g = q), (b = v);
+        break;
+      case 4:
+        (r = t), (g = p), (b = v);
+        break;
+      case 5:
+        (r = v), (g = p), (b = q);
+        break;
+    }
+
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+
+  /**
+   * Method to convert XYZ values to L*a*b.
+   *
+   * This method first converts RGB values to XYZ values, and then converts
+   * the XYZ values to L*a*b values using the standard formulas. The resulting
+   * L*a*b values are returned as an array.
+   *
+   * @param {number} r - Red value (0-255).
+   * @param {number} g - Green value (0-255).
+   * @param {number} b - Blue value (0-255).
+   * @returns {number[]} Array containing L*a*b values [l, a, b].
+   */
+  rgbToLab(r, g, b) {
+    const [x, y, z] = this.rgbToXyz(r, g, b);
+    return this.xyzToLab(x, y, z);
+  }
+
+  /**
+   * Converts RGB values to XYZ color space.
+   *
+   * This method normalizes the RGB values to the range [0, 1],
+   * applies gamma correction, and then converts them to XYZ values.
+   *
+   * @param {number} r - Red value (0-255).
+   * @param {number} g - Green value (0-255).
+   * @param {number} b - Blue value (0-255).
+   * @returns {number[]} Array containing XYZ values [x, y, z].
+   * @private
+   */
+  rgbToXyz(r, g, b) {
+    // Normalize the RGB values
+    const _applyGammaCorrection = (channel) =>
+      channel > 0.04045
+        ? Math.pow((channel + 0.055) / 1.055, 2.4)
+        : channel / 12.92;
+
+    r = _applyGammaCorrection(r);
+    g = _applyGammaCorrection(g);
+    b = _applyGammaCorrection(b);
+
+    r *= 100;
+    g *= 100;
+    b *= 100;
+    // Apply the transformation
+    const x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+    const y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
+    const z = r * 0.0193339 + g * 0.119192 + b * 0.9503041;
+
+    return [x, y, z];
+  }
+
+  /**
+   * Method to convert RGB values to CMYK.
+   *
+   * This method uses the standard formula to convert RGB values to CMYK values.
+   * The RGB values are first normalized to the range [0, 1], and then the CMYK
+   * values are calculated and scaled to the range [0, 255].
+   *
+   * @param {number} r - Red value (0-255).
+   * @param {number} g - Green value (0-255).
+   * @param {number} b - Blue value (0-255).
+   * @returns {number[]} Array containing CMYK values [cyan, magenta, yellow, black].
+   */
+  rgbToCMYK(r, g, b) {
+    let c = 1 - r / 255;
+    let m = 1 - g / 255;
+    let y = 1 - b / 255;
+    let k = Math.min(c, m, y);
+
+    c = ((c - k) / (1 - k)) * 255;
+    m = ((m - k) / (1 - k)) * 255;
+    y = ((y - k) / (1 - k)) * 255;
+    k = k * 255;
+
+    return [c, m, y, k];
+  }
+
+  /**
+   * Method to convert RGB values to YCbCr.
+   *
+   * This method uses the standard formula to convert RGB values to YCbCr values.
+   * The RGB values are first normalized to the range [0, 255], and then the YCbCr
+   * values are calculated.
+   *
+   * @param {number} r - Red value (0-255).
+   * @param {number} g - Green value (0-255).
+   * @param {number} b - Blue value (0-255).
+   * @returns {number[]} Array containing YCbCr values [Y, Cb, Cr].
+   */
+  rgbToYCbCr(r, g, b) {
+    // Apply YCbCr conversion formula
+    let y = 0.299 * r + 0.587 * g + 0.114 * b;
+    let cb = -0.168736 * r - 0.331264 * g + 0.5 * b + 128;
+    let cr = 0.5 * r - 0.418688 * g - 0.081312 * b + 128;
+
+    return [y, cb, cr];
+  }
+
+  /**
+   * Converts XYZ values to L*a*b* color space.
+   *
+   * This method normalizes the XYZ values, applies the necessary
+   * transformations, and then converts them to L*a*b* values.
+   *
+   * @param {number} x - X value.
+   * @param {number} y - Y value.
+   * @param {number} z - Z value.
+   * @returns {number[]} Array containing L*a*b* values [l, a, b].
+   * @private
+   */
+  xyzToLab(x, y, z) {
+    // Normalize the values
+    const _normalize = (value, reference) => value / reference;
+
+    x = _normalize(x, 95.047);
+    y = _normalize(y, 100.0);
+    z = _normalize(z, 108.883);
+
+    // Apply the transformation
+    const _f = (t) =>
+      t > 0.008856 ? Math.pow(t, 1 / 3) : t * 7.787 + 16 / 116;
+
+    x = _f(x);
+    y = _f(y);
+    z = _f(z);
+
+    // Convert to L*a*b values
+    let l = 116 * y - 16;
+    let a = 500 * (x - y);
+    let b = 200 * (y - z);
+
+    // Normalize and clamp the values to the range [0, 255]
+    l = this._normalizeAndClamp(l, 0, 100, 255);
+    a = this._clamp(a + 128, 0, 255);
+    b = this._clamp(b + 128, 0, 255);
+
+    return [l, a, b];
+  }
+
+  /**
+   * Normalizes and clamps a value to a specific range.
+   *
+   * @param {number} value - The value to normalize and clamp.
+   * @param {number} minIn - The input minimum range.
+   * @param {number} maxIn - The input maximum range.
+   * @param {number} maxOut - The output maximum range.
+   * @returns {number} The normalized and clamped value.
+   * @private
+   */
+  _normalizeAndClamp(value, minIn, maxIn, maxOut) {
+    const normalized = ((value - minIn) * maxOut) / (maxIn - minIn);
+    return this._clamp(normalized, 0, maxOut);
+  }
+
+  /**
+   * Clamps a value to a specific range.
+   *
+   * @param {number} value - The value to clamp.
+   * @param {number} min - The minimum range.
+   * @param {number} max - The maximum range.
+   * @returns {number} The clamped value.
+   * @private
+   */
+  _clamp(value, min, max) {
+    return Math.max(min, Math.min(value, max));
+  }
+}
+
+ -------------------- colorSpaceConversion.js ------------------------ 
+
+class ColorSpaceConversion extends ColorConverter {
+  constructor(image = null) {
+    super();
+    this.image = image;
+  }
+  setImage(image) {
+    this.image = image;
+  }
+
+  isImageSet() {
+    if (this.image) {
+      console.log("Image is set.");
+      return true;
+    } else {
+      console.log("No image set. Please set an image first.");
+      return false;
+    }
+  }
+
+  /**
+   * Converts the current image to the HSV color space with a threshold applied.
+   *
+   * This method creates a copy of the current image, processes each pixel to convert
+   * its RGB values to HSV values, and then applies a threshold based on the provided
+   * threshold value.
+   *
+   * @param {number} threshold - The threshold value (0-100) to be applied to the V (value) channel.
+   * @returns {p5.Image} A new image object in the HSV color space with threshold applied.
+   */
+  toHSV() {
+    if (!this.isImageSet()) return;
+    let hsvImage = this._createCopy();
+    hsvImage.loadPixels();
+
+    for (let p = 0; p < hsvImage.pixels.length; p += 4) {
+      let r = hsvImage.pixels[p];
+      let g = hsvImage.pixels[p + 1];
+      let b = hsvImage.pixels[p + 2];
+
+      // Convert RGB to HSV
+      let [h, s, v] = this.rgbToHSV(r, g, b);
+
+      // Set the new HSV values (converted back to RGB format for p5.js)
+      hsvImage.pixels[p] = h; // Hue
+      hsvImage.pixels[p + 1] = s; // Saturation
+      hsvImage.pixels[p + 2] = v; // Value (Brightness)
+    }
+
+    hsvImage.updatePixels();
+    return hsvImage;
+  }
+
+  toHSVThreshold(threshold = 125) {
+    if (!this.isImageSet()) return;
+    let hsvImage = this._createCopy();
+    hsvImage.loadPixels();
+
+    for (let p = 0; p < hsvImage.pixels.length; p += 4) {
+      let r = hsvImage.pixels[p];
+      let g = hsvImage.pixels[p + 1];
+      let b = hsvImage.pixels[p + 2];
+
+      // Convert RGB to HSV
+      let [h, s, v] = this.rgbToHSV(r, g, b);
+
+      // Apply threshold to the V (value) channel
+      v = v > threshold ? 255 : 0;
+
+      // Set the new HSV values (converted back to RGB format for p5.js)
+      hsvImage.pixels[p] = h; // Hue
+      hsvImage.pixels[p + 1] = s; // Saturation
+      hsvImage.pixels[p + 2] = v; // Value (Brightness)
+    }
+
+    hsvImage.updatePixels();
+    return hsvImage;
+  }
+
+  /**
+   * Converts the current image to the L*a*b color space with a threshold applied.
+   *
+   * This method creates a copy of the current image, processes each pixel to convert
+   * its RGB values to L*a*b values, and then applies a threshold based on the provided
+   * threshold value.
+   *
+   * @param {number} threshold - The threshold value (0-100) to be applied to the L* (lightness) channel.
+   * @returns {p5.Image} A new image object in the L*a*b color space with threshold applied.
+   */
+  toLab() {
+    if (!this.isImageSet()) return;
+    let labImage = this._createCopy();
+    labImage.loadPixels();
+    for (let p = 0; p < labImage.pixels.length; p += 4) {
+      let r = labImage.pixels[p];
+      let g = labImage.pixels[p + 1];
+      let b = labImage.pixels[p + 2];
+      // Convert RGB to Lab
+      let [l, a, bValue] = this.rgbToLab(r, g, b);
+
+      // Set the new L*a*b values (converted back to RGB format for p5.js)
+      labImage.pixels[p] = l; // Lightness
+      labImage.pixels[p + 1] = a; // a* Green-Red
+      labImage.pixels[p + 2] = bValue; // b* Blue-Yellow
+    }
+
+    labImage.updatePixels();
+    return labImage;
+  }
+
+  toLabThreshold(threshold = 128) {
+    if (!this.isImageSet()) return;
+    let labImage = this._createCopy();
+    labImage.loadPixels();
+    for (let p = 0; p < labImage.pixels.length; p += 4) {
+      let r = labImage.pixels[p];
+      let g = labImage.pixels[p + 1];
+      let b = labImage.pixels[p + 2];
+      // Convert RGB to Lab
+      let [l, a, bValue] = this.rgbToLab(r, g, b);
+
+      // Apply threshold to the L* (lightness) channel
+      l = l < threshold ? 0 : 255;
+
+      // Set the new L*a*b values (converted back to RGB format for p5.js)
+      labImage.pixels[p] = l; // Lightness
+      labImage.pixels[p + 1] = a; // a* Green-Red
+      labImage.pixels[p + 2] = bValue; // b* Blue-Yellow
+    }
+
+    labImage.updatePixels();
+    return labImage;
+  }
+
+  /**
+   * Converts the current image to the CMYK color space.
+   *
+   * This method creates a copy of the current image, processes each pixel to convert
+   * its RGB values to CMYK values, and then updates the pixel data of the new image.
+   * The resulting image will have its pixels represented in the CMYK color space.
+   *
+   * @returns {p5.Image} A new image object in the CMYK color space.
+   */
+  toCMYK() {
+    if (!this.isImageSet()) return;
+    let cmykImage = this._createCopy();
+    cmykImage.loadPixels();
+
+    for (let p = 0; p < cmykImage.pixels.length; p += 4) {
+      let r = cmykImage.pixels[p];
+      let g = cmykImage.pixels[p + 1];
+      let b = cmykImage.pixels[p + 2];
+      //Conver RGB to CMYK
+      let [c, m, y, k] = this.rgbToCMYK(r, g, b);
+
+      //Set the new CMYK values (note: CMYK is often stored in different formats, here we store as RGBA)
+      cmykImage.pixels[p] = c; //Cyan
+      cmykImage.pixels[p + 1] = m; //Magenta
+      cmykImage.pixels[p + 2] = y; //Yellow
+      cmykImage.pixels[p + 3] = k; //Black (K)
+    }
+
+    cmykImage.updatePixels();
+    return cmykImage;
+  }
+
+  toCMYKThreshold(threshold = 128) {
+    if (!this.isImageSet()) return;
+    let cmykImage = this._createCopy();
+    cmykImage.loadPixels();
+
+    for (let p = 0; p < cmykImage.pixels.length; p += 4) {
+      let r = cmykImage.pixels[p];
+      let g = cmykImage.pixels[p + 1];
+      let b = cmykImage.pixels[p + 2];
+      //Conver RGB to CMYK
+      let [c, m, y, k] = this.rgbToCMYK(r, g, b);
+
+      //Set threshold
+      c = c < threshold ? 0 : 255;
+
+      //Set the new CMYK values (note: CMYK is often stored in different formats, here we store as RGBA)
+      cmykImage.pixels[p] = c; //Cyan
+      cmykImage.pixels[p + 1] = m; //Magenta
+      cmykImage.pixels[p + 2] = y; //Yellow
+      cmykImage.pixels[p + 3] = k; //Black (K)
+    }
+
+    cmykImage.updatePixels();
+    return cmykImage;
+  }
+
+  /**
+   * Converts the current image to the YCbCr color space.
+   *
+   * This method creates a copy of the current image, processes each pixel to
+   * convert its RGB values to YCbCr values, and then updates the pixel data of
+   * the new image. The resulting image will have its pixels represented in the
+   * YCbCr color space.
+   *
+   * @returns {p5.Image} A new image object in the YCbCr color space.
+   */
+  toYCbCr() {
+    if (!this.isImageSet()) return;
+    let ycbcrImage = this._createCopy();
+    ycbcrImage.loadPixels();
+
+    for (let p = 0; p < ycbcrImage.pixels.length; p += 4) {
+      let r = ycbcrImage.pixels[p];
+      let g = ycbcrImage.pixels[p + 1];
+      let b = ycbcrImage.pixels[p + 2];
+
+      let [y, cb, cr] = this.rgbToYCbCr(r, g, b);
+
+      ycbcrImage.pixels[p] = y;
+      ycbcrImage.pixels[p + 1] = cb;
+      ycbcrImage.pixels[p + 2] = cr;
+      ycbcrImage.pixels[p + 3] = 255; // alpha
+    }
+
+    ycbcrImage.updatePixels();
+    return ycbcrImage;
+  }
+
+  toYCbCrThreshold(threshold = 128) {
+    if (!this.isImageSet()) return;
+    let ycbcrImage = this._createCopy();
+    ycbcrImage.loadPixels();
+
+    for (let p = 0; p < ycbcrImage.pixels.length; p += 4) {
+      let r = ycbcrImage.pixels[p];
+      let g = ycbcrImage.pixels[p + 1];
+      let b = ycbcrImage.pixels[p + 2];
+
+      let [y, cb, cr] = this.rgbToYCbCr(r, g, b);
+
+      // Apply threshold to the Y channel
+      // y = y < threshold ? 0 : 255;
+      if (y > threshold) {
+        cb = min(ycbcrImage.pixels[p + 1] * 1.1, 255) * 2;
+        cr = min(ycbcrImage.pixels[p + 2] * 1.1, 255) * 2;
+      }
+
+      ycbcrImage.pixels[p] = y;
+      ycbcrImage.pixels[p + 1] = cb;
+      ycbcrImage.pixels[p + 2] = cr;
+      ycbcrImage.pixels[p + 3] = 255; // alpha
+    }
+
+    ycbcrImage.updatePixels();
+    return ycbcrImage;
+  }
+
+  /**
+   * Creates a copy of the current image.
+   *
+   * This method creates a new image with the same dimensions as the current image,
+   * and copies the pixel data from the current image to the new image.
+   *
+   * @returns {p5.Image} A copy of the original image.
+   */
+  _createCopy() {
+    let copyImage = createImage(this.image.width, this.image.height);
+    copyImage.copy(
+      this.image,
+      0, // Source x-coordinate
+      0, // Source y-coordinate
+      this.image.width, // Source width
+      this.image.height, // Source height
+      0, // Destination x-coordinate
+      0, // Destination y-coordinate
+      this.image.width, // Destination width
+      this.image.height // Destination height
+    );
+    return copyImage;
+  }
+}
+
+ -------------------- colorspace.js ------------------------ 
+
+const colorSpaces = {
+  HSV: {
+    name: "HSV",
+    description:
+      "Dive into the spectrum of imagination with our HSV filters—where hues, saturation, and vibrance converge to redefine your visual experience.",
+    textColor: "#e8d5ff",
+    backgroundColor: "purple",
+  },
+  LAB: {
+    name: "LAB",
+    description:
+      "Explore the essence of color with our Lab filters—where lightness and chromaticity harmonize to unveil true-to-life brilliance.",
+    textColor: "#c2f4e5",
+    backgroundColor: "green",
+  },
+  CMYK: {
+    name: "CMYK",
+    description:
+      "Unlock the essence of print with our CMYK filters—where cyan, magenta, yellow, and black intertwine to bring a new dimension of color precision and depth to your visuals.",
+    textColor: "#e8d5ff",
+    backgroundColor: "purple",
+  },
+  YCbCr: {
+    name: "YCbCr",
+    description:
+      "Explore the world with our YCbCr filters—where luminance and chrominance harmonize to deliver enhanced clarity and color separation for a striking visual experience.",
+    textColor: "#c2f4e5",
+    backgroundColor: "green",
+  },
+};
+
+// Función que genera los espacios de color dinámicamente
+function generateColorSpaces(containerId) {
+  const container = document.getElementById(containerId);
+
+  Object.keys(colorSpaces).forEach((space, index) => {
+    const colorSpaceData = colorSpaces[space];
+    const colorBox = createColorSpaceBox(space, colorSpaceData, index);
+    container.appendChild(colorBox);
+  });
+}
+
+// Función que crea el bloque de cada espacio de color
+function createColorSpaceBox(space, data, index) {
+  const colorSpaceDiv = document.createElement("div");
+  colorSpaceDiv.classList.add(
+    "colorspace",
+    index % 2 === 0 ? "colorspace1" : "colorspace2"
+  );
+
+  const textDiv = createTextDiv(data);
+  const camDiv = createCamDiv(space, data.backgroundColor);
+
+  const appendElements = (index, colorSpaceDiv, textDiv, camDiv) => {
+    const [first, second] =
+      index % 2 === 0 ? [textDiv, camDiv] : [camDiv, textDiv];
+    colorSpaceDiv.append(first, second);
+  };
+
+  appendElements(index, colorSpaceDiv, textDiv, camDiv);
+
+  return colorSpaceDiv;
+}
+
+// Función que crea el bloque de texto de cada espacio de color
+function createTextDiv(data) {
+  const textDiv = document.createElement("div");
+  textDiv.classList.add("colorspace-text", data.backgroundColor);
+  textDiv.innerHTML = `
+    <h3 style="color: ${data.textColor}">${data.name}</h3>
+    <p>${data.description}</p>
+  `;
+  return textDiv;
+}
+
+// Función que crea el bloque de la cámara (camDiv)
+function createCamDiv(space, backgroundColor) {
+  const camDiv = document.createElement("div");
+  camDiv.classList.add("colorspace-cam", "colorBox");
+
+  const backBox = document.createElement("div");
+  backBox.classList.add(
+    `backBox${
+      backgroundColor.charAt(0).toUpperCase() + backgroundColor.slice(1)
+    }`
+  );
+
+  const colorBox = document.createElement("div");
+  colorBox.classList.add(`${space}-box`);
+  colorBox.id = `${space}-box`;
+
+  const instructions = document.createElement("p");
+  instructions.textContent = "Strike a pose and let the magic begin!";
+  instructions.style = `color: ${
+    backgroundColor === "purple" ? "#cfbddd" : "#93c7b4"
+  }; font-size: 20px; padding: 20px`;
+
+  colorBox.appendChild(instructions);
+  camDiv.appendChild(backBox);
+  camDiv.appendChild(colorBox);
+
+  return camDiv;
+}
+
+generateColorSpaces("colorspace-content");
+
+ -------------------- colorSpaceProcessor.js ------------------------ 
+
+/**
+ * @file colorSpaceProcessors.js
+ *
+ * @description
+ * This module is responsible for processing and displaying images captured from a
+ * webcam using various color spaces. It includes functionality for:
+ *
+ * 1. **Color Space Conversion**:
+ *    - Processes and displays images in different color spaces including HSV, LAB, CMYK, and YCbCr.
+ *    - Utilizes a `ColorSpaceProcessor` class to handle conversion and display.
+ *
+ * 2. **Threshold Filtering**:
+ *    - Applies manual thresholding to images using sliders for the aforementioned color spaces.
+ *    - Implements a `ColorSpaceProcessorThreshold` class to manage thresholding and display the filtered images.
+ *
+ * @classes
+ * - `ColorSpaceProcessor`: Handles image conversion into HSV, LAB, CMYK, and YCbCr color spaces.
+ * - `ColorSpaceProcessorThreshold`: Extends `ColorSpaceProcessor` functionality by applying threshold filters with slider controls.
+ *
+ * @functions
+ * - `setUpColorSpace`: Initializes the `ColorSpaceProcessor` for capturing and processing images in various color spaces.
+ * - `setUpColorSpaceThreshold`: Sets up the `ColorSpaceProcessorThreshold` with slider controls for threshold filtering.
+ *
+ * @dependencies
+ * - This module relies on the `ImageTool`, `FlatSliderManager`, and `WebcamManager` classes.
+ * - p5.js is used for image capture and processing.
+ *
+ * @usage
+ * - To use this module, instantiate `WebcamManager` and call `setUpColorSpace` or `setUpColorSpaceThreshold` with the instance.
+ */
+
+//////////////////////////////////////////////////////////////////
+// COLOR SPACE CONSTANTS
+///////////////////////////////////////////////////////////////////
+/**
+ * @constant INIT_VAL_SLIDER
+ * @type {number}
+ * @default 128
+ * @description
+ * The initial value for sliders used in color space thresholding. This value is set to the midpoint of the slider range.
+ */
+const INIT_VAL_SLIDER = 128;
+/**
+ * @constant SPACE_COLORS
+ * @type {object}
+ * @property {object} HSV - Configuration for the HSV color space.
+ * @property {object} LAB - Configuration for the LAB color space.
+ * @property {object} CMYK - Configuration for the CMYK color space.
+ * @property {object} YCbCr - Configuration for the YCbCr color space.
+ *
+ * @description
+ * Defines the container and class names for displaying images in different color spaces. This object maps color space names to their respective HTML container IDs and CSS class names.
+ */
+const SPACE_COLORS = {
+  HSV: { image: { container: "HSV-box", class: "HSV-image" } },
+  LAB: { image: { container: "LAB-box", class: "LAB-image" } },
+  CMYK: { image: { container: "CMYK-box", class: "CMYK-image" } },
+  YCbCr: { image: { container: "YCbCr-box", class: "YCbCr-image" } },
+};
+/**
+ * @constant SPACE_COLORS_THRESHOLD
+ * @type {object}
+ * @property {object} HSV_threshold - Configuration for HSV color space with thresholding.
+ * @property {object} Lab_threshold - Configuration for LAB color space with thresholding.
+ * @property {object} CMYK_threshold - Configuration for CMYK color space with thresholding.
+ * @property {object} YCbCr_threshold - Configuration for YCbCr color space with thresholding.
+ *
+ * @description
+ * Defines the container, class names, and slider settings for applying threshold filters to images in different color spaces. This object maps each color space threshold configuration to its HTML container IDs, slider properties, and CSS class names.
+ */
+const SPACE_COLORS_THRESHOLD = {
+  HSV_threshold: {
+    image: {
+      container: "HSV-box-threshold",
+      class: "HSV-image-threshold",
+    },
+    slider: {
+      containerID: "slider-colorspace-HSV",
+      initialValue: INIT_VAL_SLIDER,
+      step: 5,
+      min: 0,
+      max: 255,
+      className: "flat-slider-container",
+      inputClass: "flat-slider",
+      labelClass: "flat-slider-label",
+    },
+  },
+  Lab_threshold: {
+    image: {
+      container: "LAB-box-threshold",
+      class: "LAB-image-threshold",
+    },
+    slider: {
+      containerID: "slider-colorspace-LAB",
+      initialValue: INIT_VAL_SLIDER,
+      step: 5,
+      min: 0,
+      max: 255,
+      className: "flat-slider-container",
+      inputClass: "flat-slider",
+      labelClass: "flat-slider-label",
+    },
+  },
+  CMYK_threshold: {
+    image: {
+      container: "CMYK-box-threshold",
+      class: "CMYK-image-threshold",
+    },
+    slider: {
+      containerID: "slider-colorspace-CMYK",
+      initialValue: INIT_VAL_SLIDER,
+      step: 5,
+      min: 0,
+      max: 255,
+      className: "flat-slider-container",
+      inputClass: "flat-slider",
+      labelClass: "flat-slider-label",
+    },
+  },
+  YCbCr_threshold: {
+    image: {
+      container: "YCbCr-box-threshold",
+      class: "YCbCr-image-threshold",
+    },
+    slider: {
+      containerID: "slider-colorspace-YCbCr",
+      initialValue: INIT_VAL_SLIDER,
+      step: 5,
+      min: 0,
+      max: 255,
+      className: "flat-slider-container",
+      inputClass: "flat-slider",
+      labelClass: "flat-slider-label",
+    },
+  },
+};
+
+//////////////////////////////////////////////////////////////////
+// COLOR SPACE IMPLEMENTATION
+///////////////////////////////////////////////////////////////////
+
+/**
+ * @class ColorSpaceProcessor
+ * Handles the processing of images into various color spaces.
+ *
+ * @param {object} converter - An instance of a color space conversion tool.
+ * @param {object} containers - Defines the containers for each color space.
+ */
+class ColorSpaceProcessor extends ImageTool {
+  constructor(converter, containers) {
+    super();
+    this.converter = converter;
+    this.containers = containers;
+  }
+
+  /**
+   * Captures the current image from the webcam and processes it into different color spaces.
+   * @param {p5.Image} imageP5 - The captured image object from p5.js.
+   */
+  captureAndProcessImage(imageP5) {
+    this.converter.setImage(imageP5);
+
+    const processedImages = {
+      HSV: this.converter.toHSV(),
+      LAB: this.converter.toLab(),
+      CMYK: this.converter.toCMYK(),
+      YCbCr: this.converter.toYCbCr(),
+    };
+
+    this.updateImages(processedImages);
+  }
+
+  /**
+   * Updates the DOM by appending the processed images to their respective containers.
+   * @param {object} images - A collection of processed images in different color spaces.
+   */
+  updateImages(images) {
+    Object.keys(images).forEach((colorSpace) => {
+      this.appendP5ImageToDivByID(
+        images[colorSpace],
+        this.containers[colorSpace].image.container,
+        this.containers[colorSpace].image.class
+      );
+    });
+  }
+}
+
+//////////////////////////////////////////////////////////////////
+// COLOR SPACE THRESHOLD IMPLEMENTATION
+///////////////////////////////////////////////////////////////////
+
+/**
+ * @class ColorSpaceProcessorThreshold
+ * Extends the ColorSpaceProcessor functionality by applying threshold filters using sliders.
+ *
+ * @param {object} converter - An instance of a color space conversion tool.
+ * @param {object} sliders - Defines the threshold sliders for each color space.
+ * @param {object} containers - Defines the containers for each threshold color space.
+ */
+class ColorSpaceProcessorThreshold extends ImageTool {
+  constructor(converter, sliders, containers) {
+    super();
+    this.converter = converter;
+    this.sliders = sliders;
+    this.containers = containers;
+  }
+
+  /**
+   * Captures the image from the webcam and applies the threshold filters.
+   * Optionally resets the sliders.
+   *
+   * @param {p5.Image} imageP5 - The captured image object from p5.js.
+   * @param {boolean} resetSliders - If true, resets all sliders to their initial values.
+   */
+  captureAndProcessImage(imageP5, resetSliders = false) {
+    this.converter.setImage(imageP5);
+
+    if (resetSliders) {
+      Object.values(this.sliders).forEach((slider) => slider.reset());
+    }
+
+    const processedImages = this.processSliders();
+    this.updateImages(processedImages);
+  }
+
+  /**
+   * Processes the images based on the current slider values for each color space threshold.
+   * @returns {object} - A collection of processed images for each color space threshold.
+   */
+  processSliders() {
+    return Object.keys(this.sliders).reduce((acc, space) => {
+      const value = this.sliders[space].getValue();
+      const spaceKey = space.replace("_threshold", "");
+
+      if (typeof this.converter[`to${spaceKey}`] === "function") {
+        acc[spaceKey] = this.converter[`to${spaceKey}Threshold`](value);
+      } else {
+        console.error(`Conversion method for ${spaceKey} not found.`);
+      }
+      return acc;
+    }, {});
+  }
+
+  /**
+   * Processes the value of a slider for a given color space and converts it using the appropriate method.
+   *
+   * @param {string} space - The identifier of the slider and color space to process.
+   * @returns {Object} An object containing the converted value for the color space.
+   *                   If the conversion method is not found, returns an empty object.
+   */
+  processSlider(space) {
+    const value = this.sliders[space].getValue();
+    const spaceKey = space.replace("_threshold", "");
+
+    // Check if the conversion method exists for the color space
+    if (typeof this.converter[`to${spaceKey}`] === "function") {
+      return {
+        [spaceKey]: this.converter[`to${spaceKey}Threshold`](value),
+      };
+    } else {
+      console.error(`Conversion method for ${spaceKey} not found.`);
+      return {};
+    }
+  }
+
+  /**
+   * Updates the DOM by appending the processed images with thresholding to their respective containers.
+   * @param {object} images - A collection of processed images in different color spaces.
+   */
+  updateImages(images) {
+    Object.keys(images).forEach((colorSpace) => {
+      const thresholdKey = `${colorSpace}_threshold`;
+
+      if (
+        this.containers[thresholdKey] &&
+        this.containers[thresholdKey].image
+      ) {
+        this.appendP5ImageToDivByID(
+          images[colorSpace],
+          this.containers[thresholdKey].image.container,
+          this.containers[thresholdKey].image.class
+        );
+      } else {
+        console.error(`Image container not found for ${thresholdKey}`);
+      }
+    });
+  }
+
+  /**
+   * Updates a single image in response to a change in the slider value.
+   * @param {string} space - The color space key corresponding to the slider.
+   */
+  updateSingleImage(space) {
+    const processedImage = this.processSlider(space);
+    this.updateImages(processedImage);
+  }
+}
+
+//////////////////////////////////////////////////////////////////
+// SETUP FUNCTIONS FOR PROCESSORS
+///////////////////////////////////////////////////////////////////
+
+/**
+ * @function setUpColorSpace
+ * Initializes the ColorSpaceProcessor by setting up webcam image capture
+ * and processing color space conversions upon image capture.
+ *
+ * @param {WebcamManager} webcamManager - An instance of the WebcamManager to capture images.
+ */
+function setUpColorSpace(webcamManager) {
+  const spaceProcessor = new ColorSpaceProcessor(CONVERTER, SPACE_COLORS);
+
+  webcamManager.onClickCapture(() => {
+    spaceProcessor.captureAndProcessImage(webcamManager.captureIMG());
+  });
+}
+
+/**
+ * @function setUpColorSpaceThreshold
+ * Initializes the ColorSpaceProcessorThreshold for color space threshold processing with sliders.
+ * Registers slider event listeners and enables sliders on image capture.
+ *
+ * @param {WebcamManager} webcamManager - An instance of the WebcamManager to capture images.
+ */
+function setUpColorSpaceThreshold(webcamManager) {
+  const sliderManager = new FlatSliderManager(SPACE_COLORS_THRESHOLD);
+  const colorSpaceProcessorThreshold = new ColorSpaceProcessorThreshold(
+    CONVERTER,
+    sliderManager.sliders,
+    SPACE_COLORS_THRESHOLD
+  );
+
+  const sliderContainers = document.querySelectorAll(".slider-colorspace");
+  sliderContainers.forEach((slider) => slider.classList.add("disabled"));
+
+  sliderManager.registerEvents((activeSlider) => {
+    colorSpaceProcessorThreshold.updateSingleImage(activeSlider);
+  });
+
+  webcamManager.onClickCapture(() => {
+    const sliderContainers = document.querySelectorAll(".slider-colorspace");
+    sliderContainers.forEach((slider) => slider.classList.remove("disabled"));
+
+    colorSpaceProcessorThreshold.captureAndProcessImage(
+      webcamManager.captureIMG(),
+      true
+    );
+  });
+}
+
+ -------------------- colorspace-threshold.js ------------------------ 
+
+// Create a dictionary to hold the slider configurations and containers for each color space
+const colorSpacesThreshold = {
+  CMYK: {
+    label: "CMYK Threshold",
+    id: "CMYK",
+    initialText: "Capture the moment and let the fun unfold!",
+  },
+  YCbCr: {
+    label: "YCbCr Threshold",
+    id: "YCbCr",
+    initialText: "Capture the moment and let the fun unfold!",
+  },
+  HSV: {
+    label: "HSV Threshold",
+    id: "HSV",
+    initialText: "Capture the moment and let the fun unfold!",
+  },
+  LAB: {
+    label: "Lab Threshold",
+    id: "LAB",
+    initialText: "Capture the moment and let the fun unfold!",
+  },
+};
+
+// Function to create the threshold box and slider dynamically
+function createColorSpaceBox({ label, id, initialText }) {
+  // Create main container div
+  const containerDiv = document.createElement("div");
+  containerDiv.className = "colorspace-threshold-box-container";
+
+  // Create label
+  const h4 = document.createElement("h4");
+  h4.textContent = label;
+
+  // Create the box container
+  const boxDiv = document.createElement("div");
+  boxDiv.className = "colorspace-threshold-box";
+
+  // Create the threshold box where the color space will be displayed
+  const thresholdBox = document.createElement("div");
+  thresholdBox.className = `${id}-box-threshold`;
+  thresholdBox.id = `${id}-box-threshold`;
+
+  // Create initial text inside the threshold box
+  const initialTextP = document.createElement("p");
+  initialTextP.style.color = "#82b1cc";
+  initialTextP.style.fontSize = "20px";
+  initialTextP.style.padding = "70px";
+  initialTextP.textContent = initialText;
+  thresholdBox.appendChild(initialTextP);
+
+  boxDiv.appendChild(thresholdBox);
+
+  // Create slider container
+  const sliderContainer = document.createElement("div");
+  sliderContainer.className = "slider-colorspace";
+  sliderContainer.id = `slider-colorspace-${id}`;
+
+  // Append elements to main container
+  containerDiv.appendChild(h4);
+  containerDiv.appendChild(boxDiv);
+  containerDiv.appendChild(sliderContainer);
+
+  return containerDiv;
+}
+
+// Function to initialize and render all color spaces dynamically
+function initializeColorSpaces() {
+  const mainContainer = document.getElementById("colorspace-threshold"); // General container
+
+  let thresholdContainer; // Temporary container to hold two boxes at a time
+
+  // Loop through each color space and create a new threshold container every two items
+  Object.keys(colorSpacesThreshold).forEach((space, index) => {
+    const colorSpaceConfig = colorSpacesThreshold[space];
+    const colorSpaceBox = createColorSpaceBox(colorSpaceConfig);
+
+    // Create a new container for every pair of color spaces
+    if (index % 2 === 0) {
+      thresholdContainer = document.createElement("div");
+      thresholdContainer.className = "colorspace-threshold-container";
+      mainContainer.appendChild(thresholdContainer);
+    }
+
+    // Append the current color space box to the current threshold container
+    thresholdContainer.appendChild(colorSpaceBox);
+  });
+}
+
+// Initialize
+initializeColorSpaces();
+
+ -------------------- constants.js ------------------------ 
+
+/**
+ * @constant {number} FACEvideo_WIDTH
+ * @description The width of the face video capture in pixels. This is used to set the
+ * dimensions of the video input for face detection.
+ */
+const FACEvideo_WIDTH = 160;
+
+/**
+ * @constant {number} FACEvideo_HEIGHT
+ * @description The height of the face video capture in pixels. This is used to set the
+ * dimensions of the video input for face detection.
+ */
+const FACEvideo_HEIGHT = 120;
+
+const FACEimages_WIDTH = 160 * 3;
+const FACEimages_HEIGHT = 120 * 3;
+
+/**
+ * @constant {Object} filterNames
+ * @description An object mapping numeric keys to effect names. This mapping is used to
+ * associate key codes with specific image processing effects. The keys are strings representing
+ * numeric values, and the values are the names of the effects to be applied.
+ * @type {Object}
+ * @property {string} 1 - The name of the grayscale effect.
+ * @property {string} 2 - The name of the blur effect.
+ * @property {string} 3 - The name of the HSV color space effect.
+ * @property {string} 4 - The name of the Lab color space effect.
+ * @property {string} 5 - The name of the CMYK color space effect.
+ * @property {string} 6 - The name of the pixelation effect with grayscale.
+ * @property {string} 7 - The name of the pixelation effect with color.
+ */
+const filterNames = {
+  1: "grayscale",
+  2: "blur",
+  3: "HSV",
+  4: "Lab",
+  5: "CMYK",
+  6: "pixelationGray",
+  7: "pixelationColor",
+};
+
+/**
+ * @constant {Object} effectHandlers
+ * @description An object mapping effect names to their respective processing functions.
+ * Each function is responsible for applying a specific image processing effect. Functions
+ * that require a face parameter are designed to process the face image, while others
+ * process the current image set in the CONVERTER or PROCESSOR.
+ * @type {Object}
+ * @property {Function} grayscale - Applies the grayscale effect to the image using the PROCESSOR.
+ * @property {Function} blur - Applies the blur effect to the face image using the EFFECT.
+ * @property {Function} HSV - Converts the image to the HSV color space using the CONVERTER.
+ * @property {Function} Lab - Converts the image to the Lab color space using the CONVERTER.
+ * @property {Function} CMYK - Converts the image to the CMYK color space using the CONVERTER.
+ * @property {Function} pixelationGray - Applies grayscale pixelation to the face image using the EFFECT.
+ * @property {Function} pixelationColor - Applies color pixelation to the face image using the EFFECT.
+ */
+const effectHandlers = {
+  grayscale: () => TINTFace.toGrayscale(),
+  blur: (face) => EFFECTFace.applyBlur(face, 5),
+  HSV: () => CONVERTERFace.toHSV(),
+  Lab: () => CONVERTERFace.toLab(),
+  CMYK: () => CONVERTERFace.toCMYK(),
+  pixelationGray: (face) => EFFECTFace.applyPixelationGrayScale(face, 5),
+  pixelationColor: (face) => EFFECTFace.applyPixelationColor(face, 5),
+};
+
+///////////////////////////////////////////////////////////////////
+// RABBIT CONSTANTS
+///////////////////////////////////////////////////////////////////
+/**
+ * An object containing configurations for different Rabbit Filter modes.
+ * Each mode includes paths to the assets for ears, glasses, and blush stickers.
+ *
+ * @type {Object.<string, {ears: string, glasses: string, blush: string}>}
+ */
+const RABBIT_MODES = {
+  MODE_1: {
+    ears: "assets/custom/ear1.png",
+    glasses: "assets/custom/glass1.png",
+    blush: "assets/custom/blush1.png",
+  },
+  MODE_2: {
+    ears: "assets/custom/ear2.png",
+    glasses: "assets/custom/glass2.png",
+    blush: "assets/custom/blush2.png",
+  },
+  MODE_3: {
+    ears: "assets/custom/ear3.png",
+    glasses: "assets/custom/glass3.png",
+    blush: "assets/custom/blush3.png",
+  },
+};
+
+//////////////////////////////////////////////////////////////////
+// TINTSPACE CONSTANTS
+///////////////////////////////////////////////////////////////////
+/**
+ * @constant {Function} SLIDER_CONFIG
+ * @description
+ * A function that generates configuration settings for circular sliders based on the specified color.
+ * Each configuration includes the selectors and initial values required for creating and managing the slider UI elements.
+ *
+ * @param {string} color - The color name (e.g., 'red', 'green', 'blue') for which the slider configuration is to be generated.
+ * @returns {Object} Configuration object for the slider and its associated image.
+ * @property {Object} image - Contains the container ID and class for the slider image.
+ * @property {Object} slider - Contains selectors for the slider's knob, pointer, and progress, as well as the initial value.
+ */
+const SLIDER_CONFIG = (color) => ({
+  image: {
+    container: `threshold-oval-${color}`,
+    class: `threshold-oval-image`,
+  },
+  slider: {
+    knobSelector: `.circular-knob-${color}`,
+    pointerSelector: `.circular-pointer-${color}`,
+    progressSelector: `circular-progress-${color}`,
+    initialValue: INIT_TINT_VAL_SLIDER,
+  },
+});
+
+/**
+ * @constant {Array<string>} CHANNELS
+ * @description
+ * An array containing the names of the color channels.
+ * The channels included are 'red', 'green', and 'blue'.
+ */
+const CHANNELS = ["red", "green", "blue"];
+
+/**
+ * @constant {Object} CHANNEL_INDEX
+ * @description
+ * A mapping object that associates color channel names with their respective index values.
+ * This is used to reference specific color channels when applying threshold filters.
+ *
+ * @property {number} RED_THRESHOLD - Index for the red color channel.
+ * @property {number} GREEN_THRESHOLD - Index for the green color channel.
+ * @property {number} BLUE_THRESHOLD - Index for the blue color channel.
+ */
+const CHANNEL_INDEX = {
+  RED_THRESHOLD: 0,
+  GREEN_THRESHOLD: 1,
+  BLUE_THRESHOLD: 2,
+};
+
+/**
+ * @constant {Object} TINT_COLORS_BASE
+ * @description
+ * A configuration object mapping the base tint color containers to their respective DOM class names and container IDs.
+ * This includes settings for grayscale and individual RGB color channels.
+ *
+ * @property {Object} GRAYSCALE - Configuration for the grayscale image container.
+ * @property {Object} RED_CHANNEL - Configuration for the red channel image container.
+ * @property {Object} GREEN_CHANNEL - Configuration for the green channel image container.
+ * @property {Object} BLUE_CHANNEL - Configuration for the blue channel image container.
+ */
+const TINT_COLORS_BASE = {
+  GRAYSCALE: {
+    image: { container: "grayscale-box", class: "grayscale-image" },
+  },
+  RED_CHANNEL: {
+    image: { container: "red-channel-box", class: "red-channel-image" },
+  },
+  GREEN_CHANNEL: {
+    image: { container: "green-channel-box", class: "green-channel-image" },
+  },
+  BLUE_CHANNEL: {
+    image: { container: "blue-channel-box", class: "blue-channel-image" },
+  },
+};
+
+ -------------------- cuteFilters.js ------------------------ 
+
+/**
+ * Class for applying a "cute" filter to a face in a canvas.
+ * @class
+ */
+class CuteFilter {
+  /**
+   * Creates an instance of CuteFilter.
+   * @param {CanvasRenderingContext2D} ctx - The 2D drawing context of the canvas.
+   * @param {ImageLoader} hatLoader - ImageLoader instance for the hat image.
+   * @param {ImageLoader} glassLoader - ImageLoader instance for the glasses image.
+   * @param {ImageLoader} blushLoader - ImageLoader instance for the blush image.
+   */
+  constructor(ctx, hatImageLoader, glassLoader) {
+    this.ctx = ctx;
+    this.hatLoader = hatLoader;
+    this.glassLoader = glassLoader;
+    this.blushLoader = blushLoader;
+  }
+
+  /**
+   * Applies the cute filter to a detected face.
+   * @param {Object} face - The face object containing the detected facial features.
+   * @param {Object} face.box - The bounding box of the face.
+   * @param {Object} face.faceOval - The oval representing the face shape.
+   * @param {Object} face.rightEyebrow - The position of the right eyebrow.
+   */
+  apply(face) {
+    this._applyHat(face);
+    this._applyBlush(face);
+    this._applyGlasses(face);
+  }
+
+  /**
+   * Applies the hat image on top of the detected face.
+   * @param {Object} face - The face object containing the detected facial features.
+   * @private
+   */
+  _applyHat(face) {
+    const hatWidth = face.box.width * 1.5;
+    const hatHeight = hatWidth * 0.9;
+    const hatX = face.box.xMin - face.box.width * 0.2;
+    const hatY = face.box.yMin - hatHeight * 0.8;
+
+    this.hatLoader.load((hatImage) => {
+      this.ctx.drawImage(hatImage, hatX, hatY, hatWidth, hatHeight);
+    });
+  }
+
+  /**
+   * Applies the blush image on the detected face.
+   * @param {Object} face - The face object containing the detected facial features.
+   * @private
+   */
+  _applyBlush(face) {
+    const blushWidth = face.box.xMax - face.box.xMin * 0.8;
+    const blushHeight = blushWidth * 0.8;
+    const blushX = face.box.xMin - face.box.width * 0.2;
+    const blushY = face.faceOval.centerY - face.faceOval.height * 0.4;
+
+    this.blushLoader.load((blushImage) => {
+      this.ctx.drawImage(blushImage, blushX, blushY, blushWidth, blushHeight);
+    });
+  }
+
+  /**
+   * Applies the glasses image on the detected face.
+   * @param {Object} face - The face object containing the detected facial features.
+   * @private
+   */
+  _applyGlasses(face) {
+    const glassWidth = face.box.xMax - face.box.xMin * 0.8;
+    const glassHeight = glassWidth * 0.9;
+    const glassX = face.rightEyebrow.x - glassWidth * 0.2;
+    const glassY = face.rightEyebrow.y - glassHeight * 0.3;
+
+    this.glassLoader.load((glassImage) => {
+      this.ctx.drawImage(glassImage, glassX, glassY, glassWidth, glassHeight);
+    });
+  }
+}
+
+ -------------------- events.js ------------------------ 
+
+/**
+ * This file handles events related to face detection in the respective cameras
+ * for the Rabbit Filter (Extension), COLORSPACE, and TINSPACE sections. These
+ * sections change depending on the camera capture, thresholds, etc.
+ *
+ * The `handleRabbitModeChange` function is responsible for changing the stickers
+ * to see different styles in the Rabbit Filter. The `setupEventHandlers` function
+ * sets up all the sections where images are captured to apply filters.
+ */
+
+/**
+ * Handles the change of Rabbit Mode by updating the stickers (ears, glasses, blush)
+ * based on the selected mode.
+ *
+ * @param {string} mode - The selected Rabbit Mode.
+ */
+function handleRabbitModeChange(mode) {
+  const { ears, glasses, blush } = RABBIT_MODES[mode];
+  hatLoader = new ImageLoader(ears);
+  glassLoader = new ImageLoader(glasses);
+  blushLoader = new ImageLoader(blush);
+}
+
+/**
+ * Initializes the WebcamManager for each section and sets up the respective spaces.
+ */
+function setupEventHandlers() {
+  const webcamManagerP = new WebcamManager(
+    video,
+    ".webcam-grayscale-box-icon-camera"
+  );
+  const webcamManagerCS = new WebcamManager(video, ".webcam-magic-box-camera");
+
+  setUpTintSpace(webcamManagerP);
+  setUpColorSpace(webcamManagerCS);
+  setUpColorSpaceThreshold(webcamManagerCS);
+}
+
+ -------------------- faceDetection.js ------------------------ 
+
+/**
+ * Class representing a Face Detector using ML5.js.
+ */
+class FaceDetector {
+  /**
+   * Create a Face Detector.
+   * @param {HTMLVideoElement} _video - The video element to detect faces in.
+   * @param {Object} _faceMesh - The ML5.js face mesh detection library instance.
+   */
+  constructor(_video, _faceMesh) {
+    this.video = _video;
+    this.faceMesh = _faceMesh;
+    this.faces = [];
+  }
+
+  /**
+   * Start the face detection process.
+   */
+  startDetection() {
+    this.faceMesh.detectStart(this.video, this.handleFaces.bind(this));
+  }
+
+  /**
+   * Handle the detected faces.
+   * @param {Array} results - The results from the face mesh detection.
+   */
+  handleFaces(results) {
+    this.faces = results;
+  }
+
+  /**
+   * Get the detected faces.
+   * @returns {Array} The array of detected faces.
+   */
+  getFaces() {
+    return this.faces;
+  }
+
+  /**
+   * Get the region of a detected face from the video.
+   * @param {Object} face - The face object containing face oval coordinates.
+   * @returns {Array} An array containing the face image and its coordinates.
+   */
+  getFaceRegion(face) {
+    const x = face.faceOval.x;
+    const y = face.faceOval.y;
+    const w = face.faceOval.width;
+    const h = face.faceOval.height;
+    const faceImage = this.video.get(x, y, w, h);
+    return [faceImage, { x, y, w, h }];
+  }
+}
+
+ -------------------- flat-slider.js ------------------------ 
+
+/**
+ * @file flat-slider.js
+ * @description This script defines a FlatSlider class that dynamically creates
+ *              and appends a flat slider to a specified container. The slider
+ *              is customizable with options for range, steps and initial value
+ */
+
+class FlatSlider {
+  /**
+   * Creates an instance of the FlatSlider class.
+   * @param {string} containerId - The ID of the container where the slider will be appended.
+   * @param {number} initialValue - The initial value of the slider.
+   * @param {number} steps - The number of steps in the slider.
+   * @param {number} min - The minimum value of the slider range.
+   * @param {number} max - The maximum value of the slider range.
+   */
+  constructor(
+    containerId,
+    initialValue,
+    steps,
+    min,
+    max,
+    containerClass,
+    inputClass,
+    labelClass
+  ) {
+    this.container = document.getElementById(containerId);
+    if (!this.container) {
+      console.error(`Container with ID ${containerId} not found.`);
+      return;
+    }
+
+    this.initialValue = initialValue;
+    this.steps = steps;
+    this.min = min;
+    this.max = max;
+
+    this.containerClass = containerClass;
+    this.inputClass = inputClass;
+    this.labelClass = labelClass;
+
+    this.sliderInput = null;
+    this.sliderLabel = null;
+    this.isMoving = false;
+
+    this._createSliderContainer();
+    this._createSliderInput();
+    this._createSliderLabel();
+    this._appendSliderElements();
+    this._addInputEventListener();
+  }
+
+  /**
+   * Creates the slider container element.
+   */
+  _createSliderContainer() {
+    this.sliderContainer = document.createElement("div");
+    this.sliderContainer.className = this.containerClass;
+  }
+
+  /**
+   * Creates the slider input element.
+   */
+  _createSliderInput() {
+    this.sliderInput = document.createElement("input");
+    this.sliderInput.type = "range";
+    this.sliderInput.className = this.inputClass;
+    this.sliderInput.min = this.min;
+    this.sliderInput.max = this.max;
+    this.sliderInput.step = (this.max - this.min) / this.steps;
+    this.sliderInput.value = this.initialValue;
+  }
+
+  /**
+   * Creates the label element to display the slider's current value.
+   */
+  _createSliderLabel() {
+    this.sliderLabel = document.createElement("div");
+    this.sliderLabel.className = this.labelClass;
+    this.sliderLabel.textContent = this.initialValue;
+  }
+
+  /**
+   * Appends the slider input and label elements to the slider container.
+   */
+  _appendSliderElements() {
+    this.sliderContainer.appendChild(this.sliderInput);
+    this.sliderContainer.appendChild(this.sliderLabel);
+    this.container.appendChild(this.sliderContainer);
+  }
+
+  /**
+   * Adds an event listener to the slider input to update the label on value change.
+   */
+  _addInputEventListener() {
+    this.sliderInput.addEventListener("input", () => {
+      this.sliderLabel.textContent = this.sliderInput.value;
+      this.isMoving = true;
+    });
+    this.sliderInput.addEventListener("mouseup", () => (this.isMoving = false));
+  }
+
+  reset() {
+    this.sliderInput.value = this.initialValue;
+    this.sliderLabel.textContent = this.initialValue;
+  }
+
+  /**
+   * Sets the value of the slider to the specified value.
+   * @param {number} value - The value to set the slider to.
+   */
+  setValue(value) {
+    this.sliderInput.value = value;
+    this.sliderLabel.textContent = value;
+  }
+
+  /**
+   * Returns the current value of the slider.
+   * @returns {number} The current value of the slider.
+   */
+  getValue() {
+    return parseInt(this.sliderInput.value);
+  }
+}
+/**
+ * Manages multiple FlatSlider instances based on a provided configuration.
+ */
+class FlatSliderManager {
+  /**
+   * Initializes the FlatSliderManager with the given slider configuration.
+   * Creates FlatSlider instances for each configuration entry.
+   *
+   * @param {Object} sliderConfig - Configuration object for sliders.
+   * @param {Object} sliderConfig[space] - Configuration for a specific slider.
+   * @param {string} sliderConfig[space].containerID - The ID of the container element for the slider.
+   * @param {number} sliderConfig[space].initialValue - The initial value of the slider.
+   * @param {number} sliderConfig[space].step - The step value for the slider.
+   * @param {number} sliderConfig[space].min - The minimum value for the slider.
+   * @param {number} sliderConfig[space].max - The maximum value for the slider.
+   * @param {string} sliderConfig[space].className - The CSS class name for the slider.
+   * @param {string} sliderConfig[space].inputClass - The CSS class name for the slider input element.
+   * @param {string} sliderConfig[space].labelClass - The CSS class name for the slider label element.
+   */
+  constructor(sliderConfig) {
+    /**
+     * @type {Object.<string, FlatSlider>}
+     * @private
+     */
+    this.sliders = {};
+
+    // Iterate over each slider configuration and create FlatSlider instances
+    Object.keys(sliderConfig).forEach((space) => {
+      const {
+        containerID,
+        initialValue,
+        step,
+        min,
+        max,
+        className,
+        inputClass,
+        labelClass,
+      } = sliderConfig[space].slider;
+
+      this.sliders[space] = new FlatSlider(
+        containerID,
+        initialValue,
+        step,
+        min,
+        max,
+        className,
+        inputClass,
+        labelClass
+      );
+    });
+  }
+
+  /**
+   * Resets all sliders to their initial values.
+   */
+  resetAll() {
+    Object.values(this.sliders).forEach((slider) => slider.reset());
+  }
+
+  /**
+   * Registers event listeners for all sliders.
+   * Calls the provided callback function when a slider value changes.
+   *
+   * @param {Function} callback - The function to call when a slider value changes.
+   * @param {string} callback.space - The identifier of the slider that triggered the event.
+   */
+  registerEvents(callback) {
+    Object.keys(this.sliders).forEach((space) => {
+      const slider = this.sliders[space];
+
+      slider.sliderInput.addEventListener("input", () => {
+        callback(space);
+      });
+    });
+  }
+}
+
+ -------------------- hero.js ------------------------ 
+
+/**
+ * Creates and appends multiple oval div elements to a container.
+ * @param {string} containerSelector - The CSS selector for the container element.
+ * @param {number} numberOfOvals - The number of oval divs to create.
+ */
+function createOvals(containerSelector, numberOfOvals) {
+  // Select the container element
+  const container = document.querySelector(containerSelector);
+  if (!container) {
+    console.error(`Container with selector "${containerSelector}" not found`);
+    return;
+  }
+  // Create and append the oval divs
+  for (let i = 1; i <= numberOfOvals; i++) {
+    const oval = document.createElement("div");
+    oval.className = `oval oval-${i}`;
+    container.appendChild(oval);
+  }
+}
+
+/**
+ * Creates and appends title and image elements to the hero content container.
+ * @param {string} containerSelector - The CSS selector for the hero content container.
+ * @param {Array<Object>} titles - Array of objects with the structure { class: string, content: string } for titles.
+ * @param {Array<Object>} images - Array of objects with the structure { src: string, alt: string, class: string } for images.
+ */
+function createHeroContent(containerSelector, titles, images) {
+  const container = document.querySelector(containerSelector);
+  if (!container) {
+    console.error(`Container with selector "${containerSelector}" not found`);
+    return;
+  }
+
+  // Create and append the hero title container
+  const titleContainer = document.createElement("div");
+  titleContainer.className = "hero-title-container";
+
+  titles.forEach((title) => {
+    const titleElement = document.createElement("h1");
+    titleElement.className = title.class;
+    titleElement.textContent = title.content;
+    titleContainer.appendChild(titleElement);
+  });
+  container.appendChild(titleContainer);
+
+  // Create and append the hero images container
+  const imagesContainer = document.createElement("div");
+  imagesContainer.className = "hero-images-container";
+
+  images.forEach((image) => {
+    const imgElement = document.createElement("img");
+    imgElement.src = image.src;
+    imgElement.alt = image.alt;
+    imgElement.className = image.class;
+    imagesContainer.appendChild(imgElement);
+  });
+  container.appendChild(imagesContainer);
+}
+
+/**
+ * Creates and appends the SVG and text content to the hero message container.
+ * @param {string} containerSelector - The CSS selector for the hero message container.
+ * @param {string} svgContent - The SVG markup as a string.
+ * @param {string} messageText - The text content to be added.
+ */
+function createHeroMessage(containerSelector, svgContent, messageText) {
+  const container = document.querySelector(containerSelector);
+  if (!container) {
+    console.error(`Container with selector "${containerSelector}" not found`);
+    return;
+  }
+
+  // Create and append the SVG element
+  const svgContainer = document.createElement("div");
+  svgContainer.innerHTML = svgContent;
+  svgContainer.className = "hero-svg-container";
+  container.appendChild(svgContainer);
+
+  // Create and append the message text
+  const messageContainer = document.createElement("div");
+  messageContainer.className = "hero-message-text";
+  messageContainer.textContent = messageText;
+  container.appendChild(messageContainer);
+}
+
+// CREATE HERO CONTENT
+
+const titles = [
+  { class: "hero-title-stroke", content: "Cherish Art" },
+  { class: "hero-title-fill", content: "Discover Vibrance" },
+];
+
+const images = [
+  {
+    src: "assets/landing/landingDemo1.png",
+    alt: "Landing Demo 1",
+    class: "hero-image-1",
+  },
+  {
+    src: "assets/landing/landingDemo2.png",
+    alt: ":Landing Demo 2",
+    class: "hero-image-2",
+  },
+];
+
+const svgMarkup = `
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="438.99"
+    height="914.07"
+    viewBox="0 0 929 412"
+    fill="none"
+    class="hero-oval-svg"
+  >
+    <path
+      d="M736 389C499.905 430.395 38.361 419.356 5.99993 306.5C-26.3611 193.644 97.7209 57.7131 333.816 16.3176C569.912 -25.0779 839.412 14.686 907 151C939.361 263.856 966.472 335.594 736 389Z"
+      fill="#F7ECFF"
+    />
+  </svg>
+`;
+
+const messageText = `
+  Unleash your creativity with our colorful filters, magical face swaps, and more. Transform your moments into vibrant memories. Make it part of your daily fun!
+`;
+
+createOvals(".hero-background", 5);
+createHeroContent(".hero-content", titles, images);
+createHeroMessage(".hero-message", svgMarkup, messageText);
+
+ -------------------- imageEffects.js ------------------------ 
+
+class ImageEffects {
+  /**
+   * Applies a blur effect to the image.
+   *
+   * This method creates a copy of the current image, processes each pixel using
+   * a convolution with a blur matrix, and then updates the pixel data of the new
+   * image. The level of blur can be adjusted by changing the `levelBlur` parameter.
+   *
+   * @param {number} levelBlur - The intensity of the blur effect (default is 1).
+   * @returns {p5.Image} A new image object with the blur effect applied.
+   */
+  applyBlur(image, levelBlur = 1) {
+    let blurredImage = this._createCopy(image);
+    // Create a blur matrix based on the levelBlur parameter
+    const blurMatrix = this._generateBlurMatrix(levelBlur);
+
+    blurredImage.loadPixels();
+
+    // Apply the convolution operation to each pixel in the image
+    for (let x = 0; x < blurredImage.width; x++) {
+      for (let y = 0; y < blurredImage.height; y++) {
+        const pixelIndex = (y * blurredImage.width + x) * 4;
+        const [red, green, blue] = this._convolution(x, y, blurMatrix, image);
+        // Update the pixel values in the new image
+        blurredImage.pixels[pixelIndex] = red;
+        blurredImage.pixels[pixelIndex + 1] = green;
+        blurredImage.pixels[pixelIndex + 2] = blue;
+        blurredImage.pixels[pixelIndex + 3] = 255;
+      }
+    }
+
+    blurredImage.updatePixels();
+    return blurredImage;
+  }
+
+  /**
+   * Apply a pixelation effect to an image by averaging the grayscale values in blocks.
+   *
+   * @param {p5.Image} image - The image to apply the pixelation effect to.
+   * @param {number} blockSize - The size of the blocks to average the grayscale values.
+   * @returns {p5.Image} The pixelated grayscale image.
+   */
+  applyPixelationGrayScale(image, blockSize) {
+    let pixelatedImage = this._createCopy(image);
+    pixelatedImage.loadPixels();
+
+    const pixelArray = pixelatedImage.pixels;
+    const imageWidth = pixelatedImage.width;
+    const imageHeight = pixelatedImage.height;
+
+    for (let y = 0; y < pixelatedImage.height; y += blockSize) {
+      for (let x = 0; x < pixelatedImage.width; x += blockSize) {
+        let avgIntensity = this._calculateBlockAverage(
+          pixelArray,
+          x,
+          y,
+          blockSize,
+          imageWidth,
+          imageHeight
+        );
+        for (let blockY = 0; blockY < blockSize; blockY++) {
+          for (let blockX = 0; blockX < blockSize; blockX++) {
+            let pixelX = x + blockX;
+            let pixelY = y + blockY;
+
+            if (pixelX >= imageWidth || pixelY >= imageHeight) continue;
+
+            let index = (pixelY * imageWidth + pixelX) * 4;
+            pixelArray[index] = avgIntensity;
+            pixelArray[index + 1] = avgIntensity;
+            pixelArray[index + 2] = avgIntensity;
+            pixelArray[index + 3] = 255;
+          }
+        }
+      }
+    }
+
+    pixelatedImage.updatePixels();
+    return pixelatedImage;
+  }
+
+  /**
+   * Apply a pixelation effect to an image by averaging the colors in blocks.
+   *
+   * @param {p5.Image} image - The image to apply the pixelation effect to.
+   * @param {number} blockSize - The size of the blocks to average the colors.
+   * @returns {p5.Image} The pixelated image.
+   */
+  applyPixelationColor(image, blockSize) {
+    let pixelatedImage = this._createCopy(image);
+    pixelatedImage.loadPixels();
+
+    const imageWidth = pixelatedImage.width;
+    const imageHeight = pixelatedImage.height;
+
+    for (let startX = 0; startX < imageWidth; startX += blockSize) {
+      for (let startY = 0; startY < imageHeight; startY += blockSize) {
+        // Calculate the average color of the current block
+        const avgColor = this._calculateAverageColor(
+          startX,
+          startY,
+          blockSize,
+          pixelatedImage
+        );
+
+        // Paint the block with the average color
+        this._paintBlock(startX, startY, blockSize, avgColor, pixelatedImage);
+      }
+    }
+
+    pixelatedImage.updatePixels();
+    return pixelatedImage;
+  }
+
+  /**
+   * Calculates the average color of a block in the image.
+   *
+   * @param {number} startX - The x-coordinate of the top-left corner of the block.
+   * @param {number} startY - The y-coordinate of the top-left corner of the block.
+   * @param {number} blockSize - The size of the block.
+   * @param {p5.Image} img - The image object.
+   * @returns {Array<number>} An array containing the average red, green, and blue values.
+   * @private
+   */
+  _calculateAverageColor(startX, startY, blockSize, img) {
+    let totalRed = 0,
+      totalGreen = 0,
+      totalBlue = 0,
+      pixelCount = 0;
+
+    for (let offsetX = 0; offsetX < blockSize; offsetX++) {
+      for (let offsetY = 0; offsetY < blockSize; offsetY++) {
+        const currentX = startX + offsetX;
+        const currentY = startY + offsetY;
+
+        if (currentX < img.width && currentY < img.height) {
+          const pixelIndex = (currentY * img.width + currentX) * 4;
+          totalRed += img.pixels[pixelIndex];
+          totalGreen += img.pixels[pixelIndex + 1];
+          totalBlue += img.pixels[pixelIndex + 2];
+          pixelCount++;
+        }
+      }
+    }
+
+    const avgRed = totalRed / pixelCount;
+    const avgGreen = totalGreen / pixelCount;
+    const avgBlue = totalBlue / pixelCount;
+
+    return [avgRed, avgGreen, avgBlue];
+  }
+
+  /**
+   * Paints a block of the image with the specified color.
+   *
+   * @param {number} startX - The x-coordinate of the top-left corner of the block.
+   * @param {number} startY - The y-coordinate of the top-left corner of the block.
+   * @param {number} blockSize - The size of the block.
+   * @param {Array<number>} color - An array containing the red, green, and blue values to paint.
+   * @param {p5.Image} img - The image object.
+   * @private
+   */
+  _paintBlock(startX, startY, blockSize, color, img) {
+    for (let offsetX = 0; offsetX < blockSize; offsetX++) {
+      for (let offsetY = 0; offsetY < blockSize; offsetY++) {
+        const currentX = startX + offsetX;
+        const currentY = startY + offsetY;
+
+        if (currentX < img.width && currentY < img.height) {
+          const pixelIndex = (currentY * img.width + currentX) * 4;
+          img.pixels[pixelIndex] = color[0];
+          img.pixels[pixelIndex + 1] = color[1];
+          img.pixels[pixelIndex + 2] = color[2];
+        }
+      }
+    }
+  }
+
+  /**
+   * Generates a blur matrix based on the specified blur level.
+   *
+   * Creates a square matrix used for applying a blur effect to an image.
+   *
+   * @param {number} levelBlur - The intensity of the blur effect.
+   * Higher values result in a larger blur matrix.
+   * @returns {number[][]} A 2D array representing the blur matrix.
+   * @private
+   **/
+  _generateBlurMatrix(levelBlur) {
+    const size = levelBlur * 2 + 1;
+    const matrix = Array(size)
+      .fill(null)
+      .map(() => Array(size).fill(1 / size ** 2));
+    return matrix;
+  }
+
+  /**
+   * Applies a convolution operation to a pixel in the image.
+   * @param {number} x - The x-coordinate of the pixel.
+   * @param {number} y - The y-coordinate of the pixel.
+   * @param {number[][]} matrix - The convolution matrix.
+   * @param {p5.Image} img - The image object.
+   * @returns {number[]} An array containing the red, green, and blue values.
+   * @private
+   **/
+  _convolution(x, y, matrix, img) {
+    let totalRed = 0,
+      totalGreen = 0,
+      totalBlue = 0;
+    const matrixSize = matrix.length;
+    const offset = Math.floor(matrixSize / 2);
+
+    for (let i = 0; i < matrixSize; i++) {
+      for (let j = 0; j < matrixSize; j++) {
+        const xLoc = x + i - offset;
+        const yLoc = y + j - offset;
+
+        // Ensure the coordinates are within the image bounds
+        if (xLoc >= 0 && xLoc < img.width && yLoc >= 0 && yLoc < img.height) {
+          const index = (yLoc * img.width + xLoc) * 4;
+          totalRed += img.pixels[index] * matrix[i][j];
+          totalGreen += img.pixels[index + 1] * matrix[i][j];
+          totalBlue += img.pixels[index + 2] * matrix[i][j];
+        }
+      }
+    }
+
+    return [totalRed, totalGreen, totalBlue];
+  }
+
+  /**
+   * Calculates the average intensity of a block of pixels in an image.
+   *
+   * @param {number[]} pixelArray - The array of pixel values.
+   * @param {number} startX - The starting x-coordinate of the block.
+   * @param {number} startY - The starting y-coordinate of the block.
+   * @param {number} blockSize - The size of the block.
+   * @param {number} imageWidth - The width of the image.
+   * @param {number} imageHeight - The height of the image.
+   * @returns {number} The average intensity of the block.
+   */
+  _calculateBlockAverage(
+    pixelArray,
+    startX,
+    startY,
+    blockSize,
+    imageWidth,
+    imageHeight
+  ) {
+    let totalIntensity = 0;
+    let pixelCount = 0;
+
+    for (let y = 0; y < blockSize; y++) {
+      for (let x = 0; x < blockSize; x++) {
+        let pixelX = startX + x;
+        let pixelY = startY + y;
+
+        if (pixelX >= imageWidth || pixelY >= imageHeight) continue;
+
+        let index = (pixelY * imageWidth + pixelX) * 4;
+        let red = pixelArray[index];
+        let green = pixelArray[index + 1];
+        let blue = pixelArray[index + 2];
+
+        let intensity = (red + green + blue) / 3;
+        totalIntensity += intensity;
+        pixelCount++;
+      }
+    }
+
+    return totalIntensity / pixelCount;
+  }
+
+  /**
+   * Creates a copy of the current image.
+   *
+   * @returns {p5.Image} A copy of the original image.
+   */
+  _createCopy(image) {
+    return image.get();
+  }
+}
+
+ -------------------- imageProcessing.js ------------------------ 
+
+/**
+ * @file ImageProcessor.js
+ * @description
+ * This class provides a suite of image processing functionalities for p5.js images.
+ * It includes methods to convert images to grayscale, adjust brightness, extract
+ * color channels,and apply thresholding.
+ *
+ * Methods:
+ * - toGrayscale(): Converts the image to grayscale.
+ * - increaseBrightness(amount): Adjusts the brightness of the image.
+ * - extractChannel(channel): Extracts a specific color channel (red, green, or blue).
+ * - applyThreshold(thresholdValue, channel): Applies a threshold to a color channel.
+ *
+ * Internal Helper Methods:
+ * - _createCopy(): Creates a copy of the current image.
+ */
+class ImageProcessor {
+  constructor(image = null) {
+    this.image = image;
+  }
+
+  setImage(image) {
+    this.image = image;
+  }
+
+  isImageSet() {
+    return this.image !== null;
+  }
+
+  /**
+   * Converts the current image to grayscale.
+   *
+   * This method creates a new image with the same dimensions as the current image,
+   * copies the current image into the new image, and then processes each pixel to
+   * convert it to grayscale. The grayscale conversion uses the standard luminance
+   * formula with coefficients for red, green, and blue channels.
+   *
+   * @param {number} [brightnessFactor=1.2] - The factor to enhance the brightness
+   * of the grayscale value.
+   * @returns {Image} - The grayscale image.
+   */
+  toGrayscale(brightnessFactor = 1.2) {
+    if (!this.isImageSet()) return;
+    // Create a new image with the same dimensions as the current image
+    let grayscaleImage = this._createCopy();
+
+    // Load the pixel data from the new image for manipulation
+    grayscaleImage.loadPixels();
+
+    // Coefficients for the luminance formula
+    const rCoeff = 0.299;
+    const gCoeff = 0.587;
+    const bCoeff = 0.114;
+
+    // Iterate through each pixel and convert it to grayscale
+    for (let i = 0; i < grayscaleImage.pixels.length; i += 4) {
+      // Extract the red, green, and blue color channels
+      const r = grayscaleImage.pixels[i];
+      const g = grayscaleImage.pixels[i + 1];
+      const b = grayscaleImage.pixels[i + 2];
+
+      // Calculate the grayscale value using the luminance formula
+      let gray = r * rCoeff + g * gCoeff + b * bCoeff;
+
+      // Enhance the brightness of the grayscale value
+      gray = constrain(gray * brightnessFactor, 0, 255);
+
+      // Set the red, green, and blue channels to the grayscale value
+      grayscaleImage.pixels[i] =
+        grayscaleImage.pixels[i + 1] =
+        grayscaleImage.pixels[i + 2] =
+          gray;
+    }
+
+    // Update the pixel data of the new image to reflect the changes
+    grayscaleImage.updatePixels();
+    return grayscaleImage;
+  }
+
+  /**
+   * Increases the brightness of the current image by a given amount.
+   *
+   * @param {number} amount - The amount to increase the brightness. Positive values brighten the image.
+   * @returns {p5.Image} A new image object with adjusted brightness.
+   */
+  adjustBrightness(amount) {
+    if (!this.isImageSet()) return;
+    let brightnessImage = this._createCopy();
+    brightnessImage.loadPixels();
+    for (let i = 0; i < brightnessImage.pixels.length; i += 4) {
+      // Increase brightness for each color channel
+      brightnessImage.pixels[i] = constrain(
+        brightnessImage.pixels[i] + amount,
+        0,
+        255
+      );
+      // Red channel
+      brightnessImage.pixels[i + 1] = constrain(
+        brightnessImage.pixels[i + 1] + amount,
+        0,
+        255
+      ); // Green channel
+      brightnessImage.pixels[i + 2] = constrain(
+        brightnessImage.pixels[i + 2] + amount,
+        0,
+        255
+      ); // Blue channel
+    }
+    brightnessImage.updatePixels();
+    return brightnessImage;
+  }
+
+  /**
+   * Extracts a specific color channel from the current image.
+   *
+   * This method creates a new image with the same dimensions as the current image,
+   * copies the current image into the new image, and then processes each pixel to
+   * extract the specified color channel (red, green, or blue).
+   *
+   * @param {number} channel
+   * - The color channel to extract (0 for red, 1 for green, 2 for blue).
+   * @returns {p5.Image}
+   * A new image object that contains only the specified color channel.
+   */
+  extractChannel(channel) {
+    if (!this.isImageSet()) return;
+    // Create a new image with the same dimensions as the current image
+    let channelImage = this._createCopy();
+
+    // Load the pixel data of the new image
+    channelImage.loadPixels();
+
+    // Iterate over each pixel and extract the specified channel
+    for (let i = 0; i < channelImage.pixels.length; i += 4) {
+      let colorValue = channelImage.pixels[i + channel];
+
+      // Set the pixel to the channel value for R, G, B channels
+      channelImage.pixels[i] = channel === 0 ? colorValue : 0; // Red
+      channelImage.pixels[i + 1] = channel === 1 ? colorValue : 0; // Green
+      channelImage.pixels[i + 2] = channel === 2 ? colorValue : 0; // Blue
+    }
+
+    // Update the pixel data of the new image
+    channelImage.updatePixels();
+
+    // Return the new image with the extracted channel
+    return channelImage;
+  }
+
+  /**
+   * Applies a threshold to a specific color channel of the current image.
+   *
+   * @param {number} thresholdValue - The threshold value to apply.
+   * @param {number} channel - The color channel to threshold (0 for red, 1 for green, 2 for blue).
+   * @returns {p5.Image} A new image object with the threshold applied to the specified channel.
+   */
+  applyThreshold(thresholdValue, channel) {
+    if (!this.isImageSet()) return;
+    let thresholdImage = this._createCopy();
+
+    thresholdImage.loadPixels();
+    for (let i = 0; i < thresholdImage.pixels.length; i += 4) {
+      let colorValue = thresholdImage.pixels[i + channel];
+      let thresholdedValue = colorValue > thresholdValue ? 255 : 0;
+
+      thresholdImage.pixels[i] = channel === 0 ? thresholdedValue : 0; // Red
+      thresholdImage.pixels[i + 1] = channel === 1 ? thresholdedValue : 0; // Green
+      thresholdImage.pixels[i + 2] = channel === 2 ? thresholdedValue : 0; // Blue
+    }
+
+    thresholdImage.updatePixels();
+    return thresholdImage;
+  }
+
+  /**
+   * Creates a copy of the current image.
+   *
+   * @returns {p5.Image} A new image object that is a copy of the current image.
+   */
+  _createCopy() {
+    let copyImage = createImage(this.image.width, this.image.height);
+    copyImage.copy(
+      this.image,
+      0, // Source x-coordinate
+      0, // Source y-coordinate
+      this.image.width, // Source width
+      this.image.height, // Source height
+      0, // Destination x-coordinate
+      0, // Destination y-coordinate
+      this.image.width, // Destination width
+      this.image.height // Destination height
+    );
+    return copyImage;
+  }
+}
+
+ -------------------- imageProcessor.js ------------------------ 
+
+/**
+ * The ImageTool class provides utility methods for capturing, converting, and
+ * manipulating images using the p5.js library. It includes methods to capture an
+ * image from a video feed, convert a p5 image to an HTML image element, append a
+ * p5 image to a specified div, and create an empty p5 image.
+ */
+
+class ImageTool {
+  /**
+   * Captures the current frame from the video feed.
+   *
+   * @param {p5.MediaElement} video - The video element from which to capture the image.
+   * @returns {p5.Image} - The captured p5 image.
+   */
+  captureImage(video) {
+    const snapshot = video.get();
+    const capturedImage = this._createEmptyImage(
+      snapshot.width,
+      snapshot.height
+    );
+    capturedImage.copy(
+      snapshot,
+      0,
+      0,
+      snapshot.width,
+      snapshot.height,
+      0,
+      0,
+      snapshot.width,
+      snapshot.height
+    );
+    return capturedImage;
+  }
+
+  /**
+   * Converts a p5 image to an HTML image element.
+   *
+   * @param {p5.Image} p5Image - The p5 image to be converted.
+   * @returns {HTMLImageElement} - The converted HTML image element.
+   */
+  toHTMLimg(p5Image) {
+    const imgElement = document.createElement("img");
+    imgElement.src = p5Image.canvas.toDataURL(); // Converting the p5 canvas to DataURL
+    return imgElement;
+  }
+
+  /**
+   * Appends a p5 image element to a specified div.
+   *
+   * @param {p5.Image} p5Image - The p5 image to be appended as an HTML image.
+   * @param {string} divId - The ID of the div where the image should be appended.
+   * @param {string} imageClass - The class to assign to the appended image element.
+   */
+  appendP5ImageToDivByID(p5Image, divId, imageClass) {
+    const targetDiv = document.getElementById(divId);
+    targetDiv.innerHTML = "";
+
+    const HTMLimg = this.toHTMLimg(p5Image);
+    const imgElement = document.createElement("img");
+    imgElement.src = HTMLimg.src;
+    imgElement.className = imageClass;
+    document.getElementById(divId).appendChild(imgElement);
+  }
+
+  /**
+   * Creates an empty p5 image object.
+   *
+   * @param {number} width - Width of the image.
+   * @param {number} height - Height of the image.
+   * @returns {p5.Image} - The empty p5 image.
+   */
+  _createEmptyImage(width, height) {
+    return createImage(width, height); // p5 function to create an empty image
+  }
+}
+
+/**
+ * Class representing an image loader.
+ * Handles loading an image from a given source and executing a callback once the
+ * image is loaded.
+ */
+class ImageLoader {
+  /**
+   * Creates an instance of ImageLoader.
+   *
+   * @param {string} src - The source URL of the image to be loaded.
+   */
+  constructor(src) {
+    /**
+     * The Image object representing the image to be loaded.
+     * @type {HTMLImageElement}
+     */
+    this.image = new Image();
+    this.image.src = src;
+  }
+
+  /**
+   * Loads the image and executes the provided callback function once the image is loaded.
+   *
+   * @param {Function} callback - The function to be executed once the image is loaded.
+   *                              Receives the loaded Image object as an argument.
+   */
+  load(callback) {
+    if (this.image.complete) {
+      callback(this.image);
+    } else {
+      this.image.onload = () => {
+        callback(this.image);
+      };
+    }
+  }
+}
+
+ -------------------- keyboardControls.js ------------------------ 
+
+/**
+ * @fileoverview
+ * This file contains the `KeyboardControls` class used to manage keyboard interactions
+ * for applying various image effects based on user input. The class listens for keydown
+ * events and maps them to predefined image processing effects, updating the current
+ * effect used in the application.
+ */
+
+/**
+ * @class
+ * @classdesc The `KeyboardControls` class handles keyboard interactions to apply
+ * image effects based on user input. It maps specific key presses to predefined effects
+ * and updates the current effect being applied to detected faces.
+ *
+ * This class listens for keydown events and maps keys to effects using the provided
+ * `filterNames` object. When a key corresponding to an effect is pressed, it updates
+ * the effect applied to the images of detected faces.
+ */
+class KeyboardControls {
+  /**
+   * Creates an instance of `KeyboardControls`.
+   * @param {Array} faces - An array of face objects to be processed. Each face object
+   *                        represents a detected face in the image.
+   * @param {Object} filterNames - An object mapping key codes (as strings) to effect names.
+   *                                This is used to determine which effect to apply based
+   *                                on the key pressed.
+   * @param {Function} currentEffectSetter - A function to set the current effect to be applied.
+   *                                         This function should accept a single argument
+   *                                         representing the effect name.
+   */
+  constructor(faces, filterNames, currentEffectSetter) {
+    this.faces = faces;
+    this.setCurrentEffect = currentEffectSetter;
+
+    // Create a map of key codes to effect names
+    this.effectMap = new Map(
+      Object.entries(filterNames).map(([key, value]) => [key, value])
+    );
+  }
+
+  /**
+   * Updates the list of faces to be processed.
+   * @param {Array} faces - An array of updated face objects.
+   */
+  updateFaces(faces) {
+    this.faces = faces;
+  }
+
+  /**
+   * Handles key press events and updates the current effect based on the pressed key.
+   * Only processes the event if there are faces detected.
+   * @param {KeyboardEvent} event - The keydown event object.
+   */
+  handleKeyPress(event) {
+    if (this.faces.length === 0) return;
+
+    // Get the effect corresponding to the pressed key
+    const effect = this.effectMap.get(event.key);
+    if (effect) {
+      this.setCurrentEffect(effect);
+    }
+  }
+
+  /**
+   * Registers the keydown event listener for handling keyboard input.
+   * Binds the event handler to the class instance.
+   */
+  registerEventListener() {
+    document.addEventListener("keydown", this.handleKeyPress.bind(this));
+  }
+}
+
+ -------------------- main.js ------------------------ 
+
+/**
+ * ¬ RGB Channel vs. Thresholding for each channel
+ * @class ImageProcessor → @function extractChannel(channel)
+ * @class ImageProcessor → @function applyThreshold(value,channel)
+ *
+ * Each channel in an RGB image (Red, Green, Blue) stores intensity information
+ * specific to that color. The intensity values differ for each pixel based on the
+ * light, the physical characteristics of the photographed object, and the
+ * environmental conditions. When applying thresholding to each channel individually,
+ * the results will vary due to these differences in intensity.
+ *
+ * Mathematically, thresholding is a step function applied to the pixel intensity
+ * values. The process can be expressed as: T(I)= 255 if if I > Threshold 0 otherwise
+ *
+ * ! Red Channel (R)
+ * Areas with predominantly red elements will have higher intensities in this channel.
+ * When applying a threshold, any intensity value above the set threshold will turn
+ * white (255), while values below the threshold will turn black (0). In regions where
+ * red is not prominent, this channel will show little response, resulting in more
+ * black pixels
+ *
+ * * Green Channel (G)
+ * Similar to the red channel but represents the intensity of green
+ * elements. This channel will differ significantly in images with vegetation or
+ * green-dominant objects. Additionally, due to the human eye's higher sensitivity to
+ * green, the green channel might reveal more details compared to the red channel.
+ *
+ * ? Blue Channel (B)
+ * The blue channel typically exhibits lower intensity in natural images, as blue elements (e.g., the sky) are less frequent in close-up objects. In scenes where blue
+ * is not predominant, this channel will display more thresholded black areas.
+ *
+ *
+ * THEREFORE...
+ * The images resulting from thresholding applied to different color channels will
+ * look distinct due to the variations in how each channel distributes intensity
+ * across the image. For example, if an image contains more red components than green
+ * or blue, thresholding the red channel will reveal more white areas compared to the
+ * other channels. Conversely, channels with lower intensity (e.g., blue in an image
+ * dominated by reds or greens) will result in more thresholded black areas.
+ */
+
+/**
+ * ¬ Thresholding results in HSV and YCbCr Color Spaces
+ * @class ColorSpaceConversion → @function toLabThreshold(threshold)
+ * @class ColorSpaceConversion → @function toYcbcrThreshold(threshold)
+ *
+ * * HSV vs. RGB Thresholding
+ * In the HSV (Hue, Saturation, Value) color model, thresholding is typically applied
+ * to the Value (V) channel, which represents the brightness or intensity of the
+ * color. This is different from RGB, where each of the channels (R, G, B) represents
+ * color intensity directly. Since the V channel in HSV separates color (Hue) from
+ * brightness, thresholding on the V channel can effectively segment images based on
+ * lightness and darkness without being affected by the color composition (hue). As a
+ * result, images thresholded in HSV space often exhibit more meaningful segmentation
+ * of shadows and highlights compared to RGB thresholding, especially in cases of
+ * low-contrast images where RGB thresholding might fail to produce clean segmentation.
+ *    Noise Comparison: In the RGB model, applying a threshold to each channel
+ *    separately can produce significant noise, especially in areas where one or two
+ *    channels dominate but do not cross the threshold. In contrast, HSV thresholding
+ *    on the V channel typically results in smoother and less noisy segmentation, as it
+ *    accounts for the aggregate brightness of the pixel.
+ *
+ * * YCbCr vs. RGB Thresholding
+ * The YCbCr model separates the image into luminance (Y) and chrominance components
+ * (Cb and Cr). The Y channel is responsible for luminance, similar to the V channel
+ * in HSV, while Cb and Cr handle color information. When thresholding on the Y
+ * channel, we focus on the brightness, similar to the V channel in HSV but in a
+ * different transformation space. The chroma components (Cb, Cr) are not influenced
+ * by the overall light intensity, making YCbCr a more efficient space for isolating
+ * brightness-related features without affecting color saturation.
+ *    Noise Comparison: Compared to RGB, YCbCr thresholding is less noisy in the
+ *    luminance (Y) channel, as it captures overall brightness more naturally.
+ *    However, the potential manipulation of Cb and Cr components (as seen in the code
+ *    example where these are scaled) can introduce artificial color distortion,
+ *    leading to noisy edges or pixel artifacts. This is particularly noticeable in
+ *    regions where colors shift dramatically between adjacent pixels, as small
+ *    changes in Cb and Cr values may exaggerate these differences post-thresholding.
+ *
+ * THEREFORE...
+ * RGB thresholding tends to produce more noise because it isolates each channel
+ * independently. This leads to fragmented thresholding results, especially in areas
+ * where one color dominates, but the other channels fail to meet the threshold. In
+ * contrast, HSV and YCbCr focus on brightness in the V and Y channels, leading to
+ * smoother transitions between thresholded and non-thresholded areas. HSV, in
+ * particular, offers a more intuitive separation of brightness from color, reducing
+ * noise in the thresholded image.
+ */
+
+/**
+ * ! PROBLEMS FACED
+ * Artistic and Technical outcomes
+ * One of the most significant challenges I encountered was ensuring that each filter
+ * not only applied a mathematical transformation to the image but also conveyed a
+ * sense of artistic intention. My goal was to reflect how saturation, lighting, and
+ * color vibrance interact to evoke different emotional responses, which is crucial
+ * when applying filters.
+ *
+ * Threshold Filters
+ * When dealing with threshold-based filters, particularly for color space such as
+ * YCbCr, the challenge was to make these thresholds reflect transitions in
+ * the image that carried artistic and interpretative value. Initially, the threshold
+ * application resulted in overly binary outputs, which lacked nuance and made the
+ * image appear crude or heavily posterized.
+ * To resolve this, I implemented a dynamic approach to thresholding, where
+ * adjustments in the slider would simultaneously adjust neighboring channels in a way
+ * that maintained coherence. For example, modifying the Y (luminance) value while
+ * dynamically recalculating the Cb and Cr components led to more natural results.
+ *
+ * Multi-Canvas Structure
+ * A key architectural challenge was splitting the visual representation of different
+ * filters across multiple canvases. Rather than using a single P5.js canvas for all
+ * filters, I opted to create distinct HTML5 canvases for each filter. This allowed
+ * each processed image to be visualized independently, reflecting the unique
+ * properties of each filter.
+ */
+
+/**
+ * !STATUS AND ISSUES
+ * Overall, I am satisfied with the progress and results of my project. All the color
+ * space conversions and filter applications were successfully implemented. However,
+ * one of the key issues that emerged was with the LAB filter implementation,
+ * specifically in its handling of thresholding. Unlike the more straightforward RGB
+ * or HSV spaces, the LAB color space can be challenging to work with due to its
+ * non-linear perceptual representation. When applying a threshold to the L channel in
+ * particular, I noticed a lack of dominant change in the final output, which resulted
+ * in the image exhibiting inconsistencies or what I refer to as "variance
+ * desynchronization." So, rather than applying a static threshold across the entire
+ * image, an adaptive thresholding method based on local contrast or edge detection
+ * could be more effective.
+ */
+
+/**
+ * ¬ EXTENSION OVERVIEW
+ * The original project specification requested the implementation of only two filters
+ * within the color conversion section. However, I extended this by incorporating two
+ * additional filters, LAB and CMYK, for perceptual color balance in LAB and the
+ * application of printing standards in CMYK.
+ *
+ * Furthermore, I implemented an artistic and playful filter: the "Rabbit Cute"
+ * filter. This filter goes beyond conventional color conversions by adding
+ * dynamically positioned stickers—specifically, cute elements like hats and
+ * glasses—directly onto the detected face. What makes this filter unique is the three
+ * distinct styles it offers, allowing for flexibility and customization, while
+ * maintaining high accuracy in positioning the stickers. The stickers are applied
+ * based on real-time face recognition using the ML5 library, which ensures the
+ * stickers align precisely with key facial landmarks such as the eyes, mouth, and
+ * forehead.
+ *
+ * * IMPORTANT:
+ * Instead of adopting a grid layout system to organize the various sections, I opted
+ * for an independent structure for each filter using HTML and CSS. This decision was
+ * motivated both by considerations of visual clarity and by the need to emphasize the
+ * unique purpose of each filter. So, JavaScript was employed to dynamically add the
+ * this HTML code for each section, as well as to handle event-driven interactions,
+ * ensuring that the structure remains clean, reusable, and scalable.
+ *
+ */
+
+/**
+ * Structure of the project → structure/structure.js
+ */
+
+let video; // The video capture element for streaming live video from the webcam.
+let webcamCanvas, grayscaleCanvas; // Canvas elements for different processing stages.
+let webcamCtx, webcamCtx2, webcamCtx3, webcamCtx4;
+// 2D rendering contexts for the canvas elements.
+
+let faceMesh; // The face mesh model for detecting facial landmarks.
+let options = { maxFaces: 2, refineLandmarks: false, flipped: false };
+// Options for face mesh model.
+let faceDetector; // The face detector instance for face detection and processing.
+let faces = []; // Array to store detected faces.
+
+let CONVERTER, EFFECT, TINT;
+// Instances for different image processing classes.
+let CONVERTERFace, EFFECTFace, TINTFace;
+// Instances for face-specific image processing classes.
+
+// images for RABBIT FILTER (extension)
+let hatLoader; // ImageLoader instance for loading hat images.
+let glassLoader; // ImageLoader instance for loading glasses images.
+let blushLoader; // ImageLoader instance for loading blush images.
+
+let currentEffect = "none"; // Current image processing effect applied.
+
+function preload() {
+  /**
+   * Preloads necessary models and assets before setup.
+   */
+  faceMesh = ml5.faceMesh(options);
+  // Initialize face mesh model with specified options.
+}
+
+function setup() {
+  /**
+   * Sets up the canvas, video capture, and processing components.
+   */
+  createCanvas(0, 0);
+  background(0);
+  pixelDensity(1); // Set pixel density to 1 for better performance
+
+  video = createCapture(VIDEO);
+  video.size(FACEimages_WIDTH, FACEimages_HEIGHT);
+  video.hide();
+
+  faceDetector = new FaceDetector(video, faceMesh);
+
+  CONVERTER = new ColorSpaceConversion();
+  EFFECT = new ImageEffects();
+  TINT = new ImageProcessor();
+
+  CONVERTERFace = new ColorSpaceConversion();
+  EFFECTFace = new ImageEffects();
+  TINTFace = new ImageProcessor();
+
+  setupEventHandlers(); // Set up event handlers for user interactions and controls.
+
+  keyboardControls = new KeyboardControls(faces, filterNames, (effect) => {
+    currentEffect = effect; // Update the current effect based on user input.
+  });
+  // Register event listeners for keyboard controls.
+  keyboardControls.registerEventListener();
+
+  // Create and configure canvas to use as WEBCAM (grayscale and RGB channel filters).
+  webcamCanvas = document.createElement("canvas");
+  webcamCanvas.width = FACEvideo_WIDTH;
+  webcamCanvas.height = FACEvideo_HEIGHT;
+  webcamCanvas.className = "webcam-canvas";
+  webcamCtx = webcamCanvas.getContext("2d");
+  document.getElementById("webcam-box").appendChild(webcamCanvas);
+
+  // Create and configure canvas to use as WEBCAM (HSV, LAB, CMYK, YCBCR).
+  webcamCanvas2 = document.createElement("canvas");
+  webcamCanvas2.width = FACEvideo_WIDTH;
+  webcamCanvas2.height = FACEvideo_HEIGHT;
+  webcamCanvas2.className = "webcam-canvas";
+  webcamCtx2 = webcamCanvas2.getContext("2d");
+  document.getElementById("webcam-magic-box").appendChild(webcamCanvas2);
+
+  // Create and configure the third canvas to use as WEBCAM (face swap).
+  webcamCanvas3 = document.createElement("canvas");
+  webcamCanvas3.width = 3 * FACEvideo_WIDTH;
+  webcamCanvas3.height = 3 * FACEvideo_HEIGHT;
+  webcamCanvas3.className = "webcam-faceswap-canvas";
+  webcamCtx3 = webcamCanvas3.getContext("2d");
+  document.getElementById("faceswap-box").appendChild(webcamCanvas3);
+
+  // Create and configure the fourth canvas to use as WEBCAM (rabbit filter)
+  webcamCanvas4 = document.createElement("canvas");
+  webcamCanvas4.width = 3 * FACEvideo_WIDTH;
+  webcamCanvas4.height = 3 * FACEvideo_HEIGHT;
+  webcamCanvas4.className = "webcam-custom-pink";
+  webcamCtx4 = webcamCanvas4.getContext("2d");
+  document.getElementById("pinkCuteBox").appendChild(webcamCanvas4);
+
+  // Initialize image loaders for RABBIT FILTER SECTION.
+  hatLoader = new ImageLoader(RABBIT_MODES.MODE_1.ears);
+  glassLoader = new ImageLoader(RABBIT_MODES.MODE_1.glasses);
+  blushLoader = new ImageLoader(RABBIT_MODES.MODE_1.blush);
+}
+
+function draw() {
+  faceDetector.startDetection(); // Start face detection process.
+  faces = faceDetector.getFaces(); // Retrieve detected faces.
+  keyboardControls.updateFaces(faces); // Update faces for keyboard controls.
+
+  // Draw video frames on respective canvas elements.
+  webcamCtx.drawImage(video.elt, 0, 0, webcamCanvas.width, webcamCanvas.height);
+  webcamCtx2.drawImage(
+    video.elt,
+    0,
+    0,
+    webcamCanvas2.width,
+    webcamCanvas2.height
+  );
+  webcamCtx3.drawImage(
+    video.elt,
+    0,
+    0,
+    webcamCanvas3.width,
+    webcamCanvas3.height
+  );
+
+  webcamCtx4.drawImage(
+    video.elt,
+    0,
+    0,
+    webcamCanvas4.width,
+    webcamCanvas4.height
+  );
+
+  for (let i = 0; i < faces.length; i++) {
+    const face = faces[i];
+    drawFilteredFace(face, currentEffect, webcamCtx3);
+    drawCuteFilter(face, webcamCtx4, hatLoader, glassLoader, blushLoader);
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////
+// FUNCTIONS FOR FACESWAP SECTION
+/////////////////////////////////////////////////////////////////////////
+
+/**
+ * @function applyFilterToFace
+ * @description Applies a specified image processing effect to a given face image. The function sets the
+ * image in both the CONVERTER and PROCESSOR, and then applies the specified effect using the appropriate
+ * handler function. If the effect is not defined in the effectHandlers, an error is logged.
+ *
+ * @param {Image} face - The face image to which the effect will be applied.
+ * @param {string} effect - The name of the effect to apply. This should match one of the keys in the
+ * effectHandlers object. The effect determines which image processing function is called.
+ *
+ * @returns {Image|undefined} The processed image if the effect is defined; otherwise, logs an error
+ * and returns undefined.
+ *
+ * @throws {TypeError} Throws a TypeError if `face` is not an instance of Image or `effect` is not a valid
+ * key in effectHandlers.
+ *
+ * @example
+ * Example usage with a face image and a 'blur' effect
+ * const processedImage = applyFilterToFace(myFaceImage, 'blur');
+ * The variable processedImage now contains the face image with the blur effect applied
+ */
+const applyFilterToFace = (_face, _effect) => {
+  if (typeof _effect !== "string" || !effectHandlers.hasOwnProperty(_effect)) {
+    throw new TypeError(
+      'The parameter "effect" must be a valid key in effectHandlers.'
+    );
+  }
+
+  CONVERTERFace.setImage(_face);
+  TINTFace.setImage(_face);
+
+  const effectFunction = effectHandlers[_effect];
+  if (effectFunction) {
+    return effectFunction(_face);
+  } else {
+    console.error(`Effect "${_effect}" is not defined.`);
+    return;
+  }
+};
+
+/**
+ * Draws a filtered face on the canvas.
+ * @function drawFilteredFace
+ * @param {Object} face - The detected face object.
+ * @param {string} effect - The image processing effect to apply.
+ * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+ */
+function drawFilteredFace(face, effect, ctx) {
+  const [faceImage, faceCoords] = faceDetector.getFaceRegion(face);
+  if (effect === "none") {
+    console.error("Could not extract face region.");
+    return;
+  }
+
+  const processedFace = applyFilterToFace(faceImage, effect);
+  if (!(processedFace instanceof p5.Image)) {
+    console.error("Processed face is not a p5.Image instance.");
+    return;
+  }
+
+  ctx.drawImage(
+    processedFace.canvas,
+    faceCoords.x,
+    faceCoords.y,
+    faceCoords.w,
+    faceCoords.h
+  );
+}
+
+/////////////////////////////////////////////////////////////////////////
+// FUNCTIONS FOR RABBIT FILTER SECTION
+/////////////////////////////////////////////////////////////////////////
+/**
+ * Applies a cute filter to a detected face using the provided context and image loaders.
+ *
+ * @param {Object} face - The detected face object
+ * @param {CanvasRenderingContext2D} webcamCtx4 -
+ * The 2D rendering context (webcam canvas).
+ * @param {ImageLoader} hatImageLoader - ImageLoader instance for the hat image.
+ * @param {ImageLoader} glassLoader -ImageLoader instance for the glasses image.
+ * @param {ImageLoader} blushLoader -ImageLoader instance for the blush image.
+ */
+function drawCuteFilter(
+  face,
+  webcamCtx4,
+  hatImageLoader,
+  glassLoader,
+  blushLoader
+) {
+  const cuteFilter = new CuteFilter(
+    webcamCtx4,
+    hatImageLoader,
+    glassLoader,
+    blushLoader
+  );
+
+  cuteFilter.apply(face);
+}
+
+ -------------------- navbar.js ------------------------ 
+
+/**
+ * Creates a list of navigation items.
+ * @param {Array<Object>} items - Array of objects with the structure
+ * { text?: string, href: string, imgSrc?: string, imgAlt?: string }
+ * - If `imgSrc` is provided, it will be used as an image in place of `text`.
+ * @returns {HTMLUListElement} - <ul> element containing navigation items.
+ */
+function createNavList(items) {
+  const ul = document.createElement("ul");
+  ul.className = "nav-list";
+
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = item.href;
+
+    if (item.imgSrc) {
+      // If imgSrc is provided, create an image element
+      const img = document.createElement("img");
+      img.src = item.imgSrc;
+      img.alt = item.imgAlt || "Navigation image"; // Fallback alt text
+      img.className = "nav-image"; // Optional: Add a class for styling images
+      a.appendChild(img);
+    } else if (item.text) {
+      // If no image is provided, use the text
+      a.textContent = item.text;
+    }
+
+    li.appendChild(a);
+    ul.appendChild(li);
+  });
+
+  return ul;
+}
+
+/**
+ * Creates the navigation bar component and inserts it into the header element.
+ * @param {Array<Object>} items - Array of objects with the structure
+ * { text?: string, href: string, imgSrc?: string, imgAlt?: string }
+ */
+function createNavbar(items) {
+  const header = document.querySelector(".navbar");
+  if (!header) {
+    console.error("Element .navbar not found");
+    return;
+  }
+
+  const nav = document.createElement("nav");
+  nav.appendChild(createNavList(items));
+  header.appendChild(nav);
+}
+
+// Define the navigation items with both text and images
+const navItems = [
+  {
+    imgSrc: "assets/landing/LOGO.png", // Path to the image for the first item
+    imgAlt: "Serein Logo",
+    href: "#serein",
+  },
+  { text: "Grayscale & Bright Boost", href: "#grayscale-bright" },
+  { text: "RGB Channels", href: "#rgb-channels" },
+  { text: "Threshold", href: "#threshold" },
+  { text: "ColorSpace Fun", href: "#colorspace-fun" },
+  { text: "Cute Rabbit", href: "#rabbit-space" },
+  { text: "FaceSwap", href: "#faceswap" },
+];
+
+createNavbar(navItems);
+
+ -------------------- rabbitspace.js ------------------------ 
+
+/**
+ * This script is responsible for implementing the buttons for the Rabbit Filter
+ * section. It dynamically creates SVG icons and buttons based on predefined
+ * filter configurations.
+ */
+
+/**
+ * An object containing filter configurations for the Rabbit Filter section.
+ * Each filter has an id, icon, and SVG elements (circles and paths) to be rendered.
+ *
+ * @type {Object.<string, {id: string, icon: string, circles?:
+ * Array.<{cx: number, cy: number, r: number}>, paths?: string[]}>}
+ */
+const filters = {
+  pinkCute1: {
+    id: "pinkCute1",
+    icon: "target",
+    circles: [
+      { cx: 12, cy: 12, r: 10 },
+      { cx: 12, cy: 12, r: 6 },
+      { cx: 12, cy: 12, r: 2 },
+    ],
+  },
+  pinkCute2: {
+    id: "pinkCute2",
+    icon: "rainbow",
+    paths: [
+      "M22 17a10 10 0 0 0-20 0",
+      "M6 17a6 6 0 0 1 12 0",
+      "M10 17a2 2 0 0 1 4 0",
+    ],
+  },
+  pinkCute3: {
+    id: "pinkCute3",
+    icon: "flower",
+    circles: [{ cx: 12, cy: 12, r: 3 }],
+    paths: [
+      "M12 16.5A4.5 4.5 0 1 1 7.5 12 A4.5 4.5 0 1 1 12 7.5 A4.5 4.5 0 1 1 16.5 12 A4.5 4.5 0 1 1 12 16.5",
+      "M12 7.5V9",
+      "M7.5 12H9",
+      "M16.5 12H15",
+      "M12 16.5V15",
+      "M8 8L9.88 9.88",
+      "M14.12 9.88L16 8",
+      "M8 16L9.88 14.12",
+      "M14.12 14.12L16 16",
+    ],
+  },
+};
+
+/**
+ * Creates an SVG element with the specified icon, circles, and paths.
+ *
+ * @param {string} icon - The icon name to be used as a class for the SVG element.
+ * @param {Array.<{cx: number, cy: number, r: number}>} [circles=[]] - An array of circle configurations.
+ * @param {string[]} [paths=[]] - An array of path data strings.
+ * @returns {SVGElement} The created SVG element.
+ */
+function createSVG(icon, circles = [], paths = []) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  svg.setAttribute("width", "24");
+  svg.setAttribute("height", "24");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "#ffc6c6");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.classList.add(`lucide`, `lucide-${icon}`);
+
+  circles.forEach(({ cx, cy, r }) => {
+    const circle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    circle.setAttribute("cx", cx);
+    circle.setAttribute("cy", cy);
+    circle.setAttribute("r", r);
+    svg.appendChild(circle);
+  });
+
+  paths.forEach((pathData) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathData);
+    svg.appendChild(path);
+  });
+
+  return svg;
+}
+
+/**
+ * Generates buttons for each filter in the Rabbit Filter section.
+ * Each button contains an SVG icon based on the filter configuration.
+ */
+function generateButtons() {
+  const selectorContainer = document.getElementById("pinkCuteSelector");
+
+  Object.values(filters).forEach((filter) => {
+    const button = document.createElement("button");
+    button.classList.add("pinkCuteButton");
+    button.id = filter.id;
+
+    button.addEventListener("click", function () {
+      const mode = button.id.replace("pinkCute", "MODE_");
+      if (RABBIT_MODES[mode]) {
+        handleRabbitModeChange(mode);
+      }
+    });
+
+    const svgIcon = createSVG(filter.icon, filter.circles, filter.paths);
+    button.appendChild(svgIcon);
+
+    selectorContainer.appendChild(button);
+  });
+}
+
+// Call the function to generate the buttons when the script is loaded
+generateButtons();
+
+ -------------------- rgb-channel.js ------------------------ 
+
+/**
+ * @file rgbChannelManager.js
+ *
+ * @description
+ * This module handles the creation and initialization of RGB channel elements on
+ * the webpage. It generates the necessary HTML elements for displaying RGB channels,
+ * including red, green, and blue. This is achieved by leveraging a configuration
+ * object to map each channel's properties and utilizing functions to dynamically
+ * create and append the elements to the DOM.
+ *
+ * @constants
+ * - `RGB_CHANNELS_CONFIG`: An object defining the configuration for each RGB channel,
+ * including the title, container ID, and class for styling.
+ *
+ * @dependencies
+ * - This module depends on the presence of a DOM element with ID `channel-container`.
+ *
+ */
+
+const RGB_CHANNELS_CONFIG = {
+  red: {
+    title: "Red",
+    container: "red-channel-box",
+    box: "red-channel",
+  },
+  green: {
+    title: "Green",
+    container: "green-channel-box",
+    box: "green-channel",
+  },
+  blue: {
+    title: "Blue",
+    container: "blue-channel-box",
+    box: "blue-channel",
+  },
+};
+
+/**
+ * @function createChannelElement
+ * @description
+ * Creates an HTML element for a given RGB channel based on the provided configuration.
+ *
+ * @param {Object} channel - The configuration object for the RGB channel.
+ * @param {string} channel.title - The title of the channel.
+ * @param {string} channel.container - The ID of the container element for the channel.
+ * @param {string} channel.box - The class of the channel box.
+ *
+ * @returns {HTMLElement} - The newly created channel element.
+ */
+function createChannelElement(channel) {
+  if (!channel) return; // Skip if channel is not found
+
+  // Create a container div for the channel
+  const channelDiv = document.createElement("div");
+  channelDiv.classList.add("rgb-channel");
+
+  // Create and set the title element
+  const title = document.createElement("h3");
+  title.classList.add("channel-title");
+  title.textContent = channel.title;
+
+  // Create and set the content element
+  const contentDiv = document.createElement("div");
+  contentDiv.classList.add("channel-content", channel.title.toLowerCase());
+  contentDiv.id = channel.container;
+  contentDiv.innerHTML = "<p>Capture the fun! No image here yet.</p>";
+
+  // Append title and content to the channel container
+  channelDiv.appendChild(title);
+  channelDiv.appendChild(contentDiv);
+
+  return channelDiv;
+}
+
+/**
+ * @function initializeChannels
+ * @description
+ * Initializes and appends RGB channel elements to the DOM by iterating over
+ * the configuration object.
+ */
+function initializeChannels() {
+  const container = document.getElementById("channel-container");
+  if (!container) {
+    console.error(
+      "The channel container element with ID 'channel-container' was not found."
+    );
+    return;
+  }
+
+  // Create and append each channel element
+  Object.keys(RGB_CHANNELS_CONFIG).forEach((key) => {
+    container.appendChild(createChannelElement(RGB_CHANNELS_CONFIG[key]));
+  });
+}
+
+// Call this function when the DOM is fully loaded
+document.addEventListener("DOMContentLoaded", initializeChannels);
+
+ -------------------- tintSpaceProcessor.js ------------------------ 
+
+/**
+ * @file tintSpaceProcessor.js
+ *
+ * @description
+ * This module is responsible for processing and displaying images captured from a
+ * webcam with specific focus on tint color channels (red, green, blue) and their
+ * threshold adjustments. It includes functionality for:
+ *
+ * 1. **Tint Color Channel Extraction**:
+ *    - Processes and displays images highlighting grayscale, red, green, and blue color channels.
+ *    - Utilizes the `TintProcessor` class to handle extraction and display of these channels.
+ *
+ * 2. **Threshold Filtering**:
+ *    - Applies manual thresholding to the red, green, and blue color channels using sliders.
+ *    - Implements a `CircularSliderManager` to manage slider controls for threshold adjustments.
+ *
+ * @classes
+ * - `TintProcessor`: Handles image processing and display for grayscale and RGB color channels, applying threshold filters based on slider inputs.
+ *
+ * @functions
+ * - `setUpTintSpace`: Initializes the `TintProcessor` for capturing and processing images with threshold adjustments and setting up sliders.
+ *
+ * @dependencies
+ * - This module relies on the `ImageTool`, `CircularSliderManager`, and `WebcamManager` classes.
+ * - p5.js is used for image capture and processing.
+ *
+ * @usage
+ * - To use this module, instantiate `WebcamManager` and call `setUpTintSpace` with the instance.
+ */
+
+/**
+ * @constant {number} INIT_TINT_VAL_SLIDER
+ * @description
+ * Defines the initial value of the circular sliders that control the tint threshold levels
+ * for different color channels (red, green, blue). This value is set to provide a default
+ * starting point for the sliders.
+ */
+const INIT_TINT_VAL_SLIDER = 120;
+
+/**
+ * @constant {Object} TINT_COLORS_THRESHOLD
+ * @description
+ * A dynamically generated object that holds configuration data for red, green, and blue
+ * threshold sliders. Each key is constructed from the color channel name (e.g., 'RED_THRESHOLD'),
+ * and each entry contains references to the associated HTML container, slider elements, and
+ * the respective channel index.
+ */
+const TINT_COLORS_THRESHOLD = CHANNELS.reduce((acc, color) => {
+  const key = `${color.toUpperCase()}_THRESHOLD`;
+  acc[key] = {
+    channel: CHANNEL_INDEX[key],
+    ...SLIDER_CONFIG(color),
+  };
+  return acc;
+}, {});
+/**
+ * @constant {Object} TINT_COLORS
+ * @description
+ * Combines configurations for both the base tint color containers (grayscale, red, green, blue channels)
+ * and the threshold-adjustable tint colors (red, green, blue). This object maps processed images to the
+ * corresponding containers in the DOM.
+ */
+const TINT_COLORS = {
+  ...TINT_COLORS_BASE,
+  ...TINT_COLORS_THRESHOLD,
+};
+
+/**
+ * @class TintProcessor
+ * @extends ImageTool
+ * @description The TintProcessor class handles the conversion of webcam images into
+ * various color spaces and applies threshold filters based on user-controlled sliders
+ * It is responsible for capturing images, applying color filters, and updating the associated DOM elements.
+ *
+ * @param {Object} converter - An instance of a converter that handles the transformation of the image (e.g., converting to grayscale, extracting RGB channels).
+ * @param {Object} sliders - A collection of slider instances, each associated with a color channel (red, green, blue).
+ * @param {Object} containers - A collection of DOM containers where the processed images will be displayed.
+ * @param {number} initialValue - The initial value for the sliders controlling the threshold level for each color channel.
+ */
+class TintProcessor extends ImageTool {
+  constructor(converter, sliders, containers, initialValue) {
+    super();
+    this.converter = converter;
+    this.sliders = sliders;
+    this.containers = containers;
+    this.initialValue = initialValue;
+  }
+
+  /**
+   * @method captureAndProcessImage
+   * @description Captures the current image from the webcam and processes it by
+   * applying various color space transformations and threshold filters. The processed
+   * images are then updated in their respective DOM containers.
+   *
+   * @param {p5.Image} imageP5 - The p5.js image object captured from the webcam,
+   * containing pixel data to be processed.
+   * @param {boolean} resetSliders - Optional parameter. If true, resets the sliders
+   * to their initial values after capturing the image.
+   */
+  captureAndProcessImage(imageP5, resetSliders = false) {
+    this.converter.setImage(imageP5);
+
+    // Reset slider values to initial state if specified.
+    if (resetSliders) {
+      Object.values(this.sliders).forEach((slider) =>
+        slider.setValue(this.initialValue)
+      );
+    }
+
+    // Generate processed images for each color space and threshold value.
+    const processedImages = {
+      GRAYSCALE: this.converter.toGrayscale(),
+      RED_CHANNEL: this.converter.extractChannel(0),
+      GREEN_CHANNEL: this.converter.extractChannel(1),
+      BLUE_CHANNEL: this.converter.extractChannel(2),
+      RED_THRESHOLD: this.converter.applyThreshold(
+        this.sliders.RED_THRESHOLD.getValue(),
+        0
+      ),
+      GREEN_THRESHOLD: this.converter.applyThreshold(
+        this.sliders.GREEN_THRESHOLD.getValue(),
+        1
+      ),
+      BLUE_THRESHOLD: this.converter.applyThreshold(
+        this.sliders.BLUE_THRESHOLD.getValue(),
+        2
+      ),
+    };
+
+    // Update the DOM elements with the processed images.
+    this.updateImages(processedImages);
+  }
+
+  /**
+   * @method updateImages
+   * @description Updates the HTML containers with the provided processed images.
+   * This method is called whenever new images are generated (e.g., after applying
+   * threshold filters or converting to grayscale).
+   *
+   * @param {Object} images - A dictionary containing the processed images, where the
+   * keys represent different color spaces (e.g., 'GRAYSCALE', 'RED_CHANNEL',
+   * 'RED_THRESHOLD') and the values are the corresponding p5.js image objects.
+   */
+  updateImages(images) {
+    Object.keys(images).forEach((colorSpace) => {
+      this.appendP5ImageToDivByID(
+        images[colorSpace],
+        this.containers[colorSpace].image.container,
+        this.containers[colorSpace].image.class
+      );
+    });
+  }
+}
+
+function setUpTintSpace(webcamManager) {
+  const slidersContainer = document.getElementById("sliders-container");
+  // Hide the sliders until an image is captured.
+  slidersContainer.style.visibility = "hidden";
+
+  // Initialize the slider manager to handle user interaction with the sliders.
+  const sliderManager = new CircularSliderManager(
+    TINT_COLORS_THRESHOLD,
+    ["red", "green", "blue"],
+    slidersContainer
+  );
+
+  // Initialize the tint processor to handle image capture and processing
+  const tintProcessor = new TintProcessor(
+    TINT,
+    sliderManager.sliders,
+    TINT_COLORS,
+    INIT_TINT_VAL_SLIDER
+  );
+
+  // Set up the capture button to trigger image capture and processing.
+  webcamManager.onClickCapture(() => {
+    const tmp_label = document.getElementById("temporal-label-threshold");
+    if (tmp_label) tmp_label.remove();
+    // Make the sliders visible once an image is captured.
+    slidersContainer.style.visibility = "visible";
+    tintProcessor.captureAndProcessImage(webcamManager.captureIMG(), true);
+  });
+
+  // Register events to update images in real-time as sliders are adjusted.
+  sliderManager.registerEvents((space, value, channel) => {
+    const thresholdImage = TINT.applyThreshold(value, channel);
+    tintProcessor.updateImages({
+      [`${space.toUpperCase()}`]: thresholdImage,
+    });
+  });
+}
+
+ -------------------- webcam.js ------------------------ 
+
+/**
+ * @file webcamManager.js
+ *
+ * This file contains the implementation of the `WebcamManager` class, which provides a way to capture images from a webcam in a web application. It extends the `ImageTool` class, allowing for easy image capture and processing using the webcam feed. The class also allows registering callback functions when a capture event (such as a button click) occurs.
+ *
+ * Example:
+ *
+ * ```javascript
+ * const videoElement = document.querySelector('#webcam');
+ * const webcamManager = new WebcamManager(videoElement, '.capture-btn');
+ *
+ * webcamManager.onClickCapture(() => {
+ *    const capturedImage = webcamManager.captureIMG();
+ *    console.log("Captured Image: ", capturedImage);
+ * });
+ * ```
+ *
+ * The example above demonstrates how to set up a `WebcamManager` for capturing webcam images, and how to use the `onClickCapture` method to trigger image capture when a button is clicked.
+ */
+
+//////////////////////////////////////////////////////////////////
+// WebcamManager Implementation
+///////////////////////////////////////////////////////////////////
+
+/**
+ * The `WebcamManager` class is responsible for managing the webcam feed, capturing images, and triggering events based on user interaction. It extends the `ImageTool` class, inheriting the image processing capabilities.
+ */
+class WebcamManager extends ImageTool {
+  /**
+   * Creates an instance of WebcamManager.
+   *
+   * @param {HTMLVideoElement} videoElement - The video representing the webcam feed.
+   * @param {string} cameraClass - The CSS selector for the capture button that triggers the image capture.
+   */
+  constructor(videoElement, cameraClass) {
+    super();
+    this.cameraClass = cameraClass;
+    this.videoElement = videoElement;
+  }
+
+  /**
+   * Captures the current frame from the webcam feed.
+   *
+   * @returns {p5.Image} - The captured image as a p5.js image object.
+   */
+  captureIMG() {
+    return this.captureImage(this.videoElement);
+  }
+
+  /**
+   * Registers an event listener on the capture button. The provided callback function is triggered when the button is clicked.
+   *
+   * @param {Function} callback - The function to be executed when the capture button is clicked.
+   */
+  onClickCapture(callback) {
+    document.querySelector(this.cameraClass).addEventListener("click", () => {
+      callback();
+    });
+  }
+}

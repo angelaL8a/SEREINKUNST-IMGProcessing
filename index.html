@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>IMAGE PROCESSING APP</title>
+
+    <link rel="stylesheet" href="styles/styles.css" />
+
+    <script src="src/events/events.js"></script>
+
+    <script src="libraries/p5.min.js" type="text/javascript"></script>
+    <script src="libraries/p5.dom.js" type="text/javascript"></script>
+    <script src="https://unpkg.com/ml5@1/dist/ml5.js"></script>
+
+    <script src="src/utils/colorConverter.js"></script>
+    <script src="src/config/constants.js" type="text/javascript"></script>
+
+    <script
+      src="src/config/keyboardControls.js"
+      type="text/javascript"
+    ></script>
+
+    <script src="src/main.js" type="text/javascript"></script>
+    <script src="src/utils/imageProcessing.js" type="text/javascript"></script>
+    <script src="src/utils/imageEffects.js" type="text/javascript"></script>
+    <script
+      src="src/utils/colorSpaceConversion.js"
+      type="text/javascript"
+    ></script>
+
+    <script src="src/utils/faceDetection.js" type="text/javascript"></script>
+    <script src="src/utils/faceReplacer.js" type="text/javascript"></script>
+
+    <!-- <style>
+      body {
+        padding: 0;
+        margin: 0;
+      }
+      canvas {
+        vertical-align: top;
+      }
+    </style> -->
+  </head>
+  <body>
+    <header class="navbar"></header>
+
+    <div class="hero-background"></div>
+    <div class="hero-content"></div>
+    <div class="hero-message"></div>
+
+    <!-- GrayScale Section-->
+    <div class="webcam-grayscale-container">
+      <div class="webcam-grayscale-section">
+        <div class="webcam-grayscale-box-camera" id="webcam-magic">
+          <h2 class="webcam-grayscale-box-title">WebCam Magic</h2>
+          <div class="webcam-grayscale-box-content-camera" id="webcam-box">
+            <button type="button" class="webcam-grayscale-box-icon-camera">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 48 48"
+                fill="none"
+              >
+                <path
+                  d="M46 38C46 39.0609 45.5786 40.0783 44.8284 40.8284C44.0783 41.5786 43.0609 42 42 42H6C4.93913 42 3.92172 41.5786 3.17157 40.8284C2.42143 40.0783 2 39.0609 2 38V16C2 14.9391 2.42143 13.9217 3.17157 13.1716C3.92172 12.4214 4.93913 12 6 12H14L18 6H30L34 12H42C43.0609 12 44.0783 12.4214 44.8284 13.1716C45.5786 13.9217 46 14.9391 46 16V38Z"
+                  stroke="#1E1E1E"
+                  stroke-opacity="0.28"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M24 34C28.4183 34 32 30.4183 32 26C32 21.5817 28.4183 18 24 18C19.5817 18 16 21.5817 16 26C16 30.4183 19.5817 34 24 34Z"
+                  stroke="#1E1E1E"
+                  stroke-opacity="0.28"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="webcam-grayscale-box">
+          <div class="webcam-grayscale-box-item" id="grayscale-bright">
+            <h2 class="webcam-grayscale-box-title">Grayscale & Bright Boost</h2>
+            <div class="webcam-grayscale-box-content" id="grayscale-box">
+              <p
+                style="
+                  font-size: 20px;
+                  padding: 60px;
+                  text-align: center;
+                  color: #93c7b4;
+                "
+              >
+                No magic yet! Snap a pic to see the magic.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel Section -->
+    <div class="rgb-container" id="rgb-channels">
+      <div class="rgb-info-container">
+        <h2 class="rgb-title">RGB Channels</h2>
+        <p class="rgb-title-content">
+          Amplify your colors, perfect your images.
+        </p>
+      </div>
+      <div class="rgb-channel-container" id="channel-container">
+        <!-- Channel elements will be dynamically created by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Channel Threshold Section -->
+    <div class="threshold-container" id="threshold">
+      <div class="threshold-section">
+        <!-- Left Division: Title and Content -->
+        <div class="threshold-left">
+          <h2 class="threshold-title">Threshold</h2>
+          <p class="threshold-content">
+            Step into a new dimension of creativity with our Threshold
+            filters—where every detail transforms into vibrant possibilities.
+          </p>
+        </div>
+
+        <!-- Right Division: Overlapping Ovals -->
+        <p class="temporal-label-threshold" id="temporal-label-threshold">
+          Snap a selfie to start the fun!
+        </p>
+        <div class="threshold-right" id="sliders-container">
+          <!-- dynamically created by JavaScript  -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Color Space Section -->
+    <div class="colorspace-container">
+      <div class="colorspace-section" id="colorspace-fun">
+        <!-- Color Space Section Title  -->
+        <div class="colorspace-title">
+          <h2>ColorSpace Fun</h2>
+        </div>
+
+        <!-- Color Space Section -->
+        <div class="colorspace-content" id="colorspace-content">
+          <!-- dynamically created by JavaScript  -->
+        </div>
+
+        <!-- Webcam Magic Overlay for Color Space Section-->
+        <div class="overlay-sectionWebcam">
+          <div class="webcam-magic-title">
+            <h3>WebCam Magic</h3>
+          </div>
+          <div class="webcam-magic-div" id="webcam-magic-box">
+            <button type="button" class="webcam-magic-box-camera">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 48 48"
+                fill="none"
+              >
+                <path
+                  d="M46 38C46 39.0609 45.5786 40.0783 44.8284 40.8284C44.0783 41.5786 43.0609 42 42 42H6C4.93913 42 3.92172 41.5786 3.17157 40.8284C2.42143 40.0783 2 39.0609 2 38V16C2 14.9391 2.42143 13.9217 3.17157 13.1716C3.92172 12.4214 4.93913 12 6 12H14L18 6H30L34 12H42C43.0609 12 44.0783 12.4214 44.8284 13.1716C45.5786 13.9217 46 14.9391 46 16V38Z"
+                  stroke="#1E1E1E"
+                  stroke-opacity="0.28"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M24 34C28.4183 34 32 30.4183 32 26C32 21.5817 28.4183 18 24 18C19.5817 18 16 21.5817 16 26C16 30.4183 19.5817 34 24 34Z"
+                  stroke="#1E1E1E"
+                  stroke-opacity="0.28"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color Space Threshold Section -->
+    <div class="colorspace-threshold" id="colorspace-threshold">
+      <!-- dynamically created by JavaScript  -->
+    </div>
+
+    <!-- Rabbit Filter Space Section -->
+    <div class="custom-filters-container" id="rabbit-space">
+      <div class="custom-filtersTitle">
+        <h2>Rabbit Filter</h2>
+      </div>
+      <div class="custom-filter-content">
+        <div class="custom-filter">
+          <div class="custom-filterBox pinkCute">
+            <div class="pinkCuteBox" id="pinkCuteBox"></div>
+            <div class="pinkCuteSelector" id="pinkCuteSelector">
+              <!-- dynamically created by JavaScript  -->
+            </div>
+          </div>
+          <div class="custom-filterSticker">
+            <img src="assets/landing/rabbit.png" alt="rabbit sticker" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Face Swap Filter Section -->
+    <div class="faceswap-container" id="faceswap">
+      <div class="faceswap-section">
+        <div class="faceswap-presentation">
+          <h3>FaceSwap</h3>
+          <p>Transform faces and have fun with instant magic!</p>
+          <p style="font-size: 12px">
+            1: <strong>grayscale</strong> 2: <strong>blur</strong> 3:
+            <strong>HSV</strong> 4: <strong>Lab</strong>
+          </p>
+          <p style="font-size: 12px">
+            5: <strong>CMYK</strong> 6: <strong>Pixelating Grayscale</strong> 7:
+            <strong>Pixelation </strong>
+          </p>
+        </div>
+        <div class="faceswap-content">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="530"
+            height="549"
+            viewBox="0 0 530 549"
+            fill="none"
+          >
+            <g filter="url(#filter0_dd_7_515)">
+              <path
+                d="M443.587 430.775C369.617 509.945 207.221 530.805 106.841 455.164C6.46158 379.522 11.745 228.941 85.7152 149.771C159.685 70.6008 264.355 -20.0812 398.332 65.3719C498.712 141.013 505.901 344.007 443.587 430.775Z"
+                fill="#FCF7FF"
+              />
+            </g>
+            <defs>
+              <filter
+                id="filter0_dd_7_515"
+                x="0.661621"
+                y="0.784767"
+                width="529.006"
+                height="547.564"
+                filterUnits="userSpaceOnUse"
+                color-interpolation-filters="sRGB"
+              >
+                <feFlood flood-opacity="0" result="BackgroundImageFix" />
+                <feColorMatrix
+                  in="SourceAlpha"
+                  type="matrix"
+                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                  result="hardAlpha"
+                />
+                <feOffset dx="8" dy="8" />
+                <feGaussianBlur stdDeviation="19.05" />
+                <feComposite in2="hardAlpha" operator="out" />
+                <feColorMatrix
+                  type="matrix"
+                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0"
+                />
+                <feBlend
+                  mode="normal"
+                  in2="BackgroundImageFix"
+                  result="effect1_dropShadow_7_515"
+                />
+                <feColorMatrix
+                  in="SourceAlpha"
+                  type="matrix"
+                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                  result="hardAlpha"
+                />
+                <feOffset dx="-8" dy="-9" />
+                <feGaussianBlur stdDeviation="4.85" />
+                <feComposite in2="hardAlpha" operator="out" />
+                <feColorMatrix
+                  type="matrix"
+                  values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"
+                />
+                <feBlend
+                  mode="normal"
+                  in2="effect1_dropShadow_7_515"
+                  result="effect2_dropShadow_7_515"
+                />
+                <feBlend
+                  mode="normal"
+                  in="SourceGraphic"
+                  in2="effect2_dropShadow_7_515"
+                  result="shape"
+                />
+              </filter>
+            </defs>
+          </svg>
+          <div id="faceswap-box" class="faceswap-box"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="src/components/rabbitspace.js"></script>
+    <script src="src/components/rgb-channel.js"></script>
+    <script src="src/components/navbar.js"></script>
+    <script src="src/components/hero.js"></script>
+    <script src="src/components/circular-slider.js"></script>
+    <script src="src/components/flat-slider.js"></script>
+    <script src="src/components/colorspace-threshold.js"></script>
+    <script src="src/components/colorspace.js"></script>
+    <script src="src/utils/processors/imageProcessor.js"></script>
+    <script src="src/utils/webcam.js"></script>
+    <script src="src/utils/processors/tintSpaceProcessor.js"></script>
+    <script src="src/utils/processors/colorSpaceProcessor.js"></script>
+    <script src="src/utils/imageLoader.js"></script>
+    <script src="src/utils/cuteFilters.js" type="text/javascript"></script>
+  </body>
+</html>
